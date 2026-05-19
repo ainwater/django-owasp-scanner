@@ -1,0 +1,46 @@
+{
+  "version": "OWASP Top 10:2025",
+  "source": "https://owasp.org/Top10/2025/",
+  "categories": [
+    {
+      "id": "A01",
+      "name": "Broken Access Control"
+    },
+    {
+      "id": "A02",
+      "name": "Security Misconfiguration"
+    },
+    {
+      "id": "A03",
+      "name": "Software Supply Chain Failures"
+    },
+    {
+      "id": "A04",
+      "name": "Cryptographic Failures"
+    },
+    {
+      "id": "A05",
+      "name": "Injection"
+    },
+    {
+      "id": "A06",
+      "name": "Insecure Design"
+    },
+    {
+      "id": "A07",
+      "name": "Authentication Failures"
+    },
+    {
+      "id": "A08",
+      "name": "Software or Data Integrity Failures"
+    },
+    {
+      "id": "A09",
+      "name": "Security Logging and Alerting Failures"
+    },
+    {
+      "id": "A10",
+      "name": "Mishandling of Exceptional Conditions"
+    }
+  ]
+}

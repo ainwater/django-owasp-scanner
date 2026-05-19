@@ -1,0 +1,16 @@
+[
+  {
+    "title": "Example validated finding",
+    "severity": "High",
+    "cwe": 693,
+    "description": "What was confirmed and why it matters.",
+    "mitigation": "Specific remediation guidance.",
+    "impact": "Business or technical impact.",
+    "references": "Code paths, report artifacts, tickets, or evidence.",
+    "file_path": "optional/path.py",
+    "line": 123,
+    "static_finding": true,
+    "dynamic_finding": false,
+    "tags": ["owasp-2025", "validated"]
+  }
+]

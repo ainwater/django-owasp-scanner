@@ -1,0 +1,13 @@
+.DS_Store
+**/.DS_Store
+.env
+*.env
+
+reports/
+audit-kit/runs/
+.playwright-cli/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+**/*.log
+**/*.status
