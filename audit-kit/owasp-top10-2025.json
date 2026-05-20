@@ -1,46 +1,278 @@
 {
   "version": "OWASP Top 10:2025",
   "source": "https://owasp.org/Top10/2025/",
+  "model_version": "1.0",
+  "scope": "Django and Django REST Framework web applications",
+  "artifact_families": {
+    "F1": "Inventario, versiones y metadatos de ejecucion",
+    "F2": "Inventario Django, autorizacion y autenticacion",
+    "F3": "Diseno, arquitectura y threat modeling",
+    "F4": "SAST, SCA, SBOM, IaC y secretos",
+    "F5": "Evidencia manual validada",
+    "F6": "DAST, TLS, cabeceras y API",
+    "F7": "Logging, alertas y respuesta",
+    "F8": "Condiciones excepcionales, resiliencia y recursos"
+  },
   "categories": [
     {
       "id": "A01",
-      "name": "Broken Access Control"
+      "name": "Broken Access Control",
+      "objective": "Probar que todo acceso sensible se decide en servidor, niega por defecto y respeta rol, tenant, propiedad de objeto y estado de sesion.",
+      "cwes": [22, 23, 36, 59, 61, 65, 200, 201, 219, 276, 281, 282, 283, 284, 285, 352, 359, 377, 379, 402, 424, 425, 441, 497, 538, 540, 548, 552, 566, 601, 615, 639, 668, 732, 749, 862, 863, 918, 922, 1275],
+      "asvs": ["ASVS 5.0 V8 Authorization", "ASVS 5.0 V5 Validation, Sanitization and Encoding"],
+      "django_controls": [
+        "Permisos server-side en vistas, viewsets, servicios y queries",
+        "Filtros de propiedad y tenant antes de devolver objetos",
+        "CSRF activo para sesiones y CORS minimo sin origenes arbitrarios con credenciales",
+        "Invalidez de sesion o token tras logout y cambios sensibles",
+        "Pruebas negativas para endpoints anonimos, usuarios cruzados y roles privilegiados"
+      ],
+      "automated_evidence": [
+        {"id": "django_urls", "artifacts": ["F2/django-urls.json"], "required": true},
+        {"id": "django_settings", "artifacts": ["F2/django-settings.json"], "required": true},
+        {"id": "semgrep_django", "artifacts": ["F4/semgrep-django.json"], "required": true},
+        {"id": "zap_baseline", "artifacts": ["F6/zap-baseline.xml"], "required": false}
+      ],
+      "manual_evidence": [
+        {"id": "authz_matrix", "artifacts": ["F2/authz-matrix.yml", "F2/authz-results.json"], "required": true},
+        {"id": "idor_review", "artifacts": ["F5/A01-idor-review.md"], "required": true}
+      ],
+      "defectdojo_tags": ["owasp-2025", "A01", "django", "authorization", "access-control"]
     },
     {
       "id": "A02",
-      "name": "Security Misconfiguration"
+      "name": "Security Misconfiguration",
+      "objective": "Probar hardening repetible de framework, contenedor, cabeceras, entorno, errores, servicios y permisos expuestos.",
+      "cwes": [5, 11, 13, 15, 16, 260, 315, 489, 526, 547, 611, 614, 776, 942, 1004, 1174],
+      "asvs": ["ASVS 5.0 V13 Configuration", "ASVS 5.0 V14 Data Protection"],
+      "django_controls": [
+        "DEBUG falso y ALLOWED_HOSTS restrictivo en produccion",
+        "SecurityMiddleware, CsrfViewMiddleware y XFrameOptionsMiddleware en orden seguro",
+        "HSTS, nosniff, referrer policy, COOP, CSP y cookies seguras",
+        "Errores genericos sin stack traces ni versiones",
+        "Imagenes, compose e IaC sin defaults inseguros ni privilegios innecesarios"
+      ],
+      "automated_evidence": [
+        {"id": "django_check_deploy", "artifacts": ["status/django-check-deploy.status", "status/django-check-deploy.log"], "required": true},
+        {"id": "django_settings", "artifacts": ["F2/django-settings.json"], "required": true},
+        {"id": "checkov", "artifacts": ["F4/checkov.json"], "required": true},
+        {"id": "trivy_misconfig", "artifacts": ["F4/trivy.json"], "required": true},
+        {"id": "http_headers", "artifacts": ["F6/http-headers.txt"], "required": false},
+        {"id": "nuclei", "artifacts": ["F6/nuclei-full.json"], "required": false}
+      ],
+      "manual_evidence": [
+        {"id": "cloud_permissions", "artifacts": ["F5/A02-cloud-permissions.md"], "required": false},
+        {"id": "deployment_hardening", "artifacts": ["F5/A02-deployment-hardening.md"], "required": true}
+      ],
+      "defectdojo_tags": ["owasp-2025", "A02", "django", "misconfiguration", "hardening"]
     },
     {
       "id": "A03",
-      "name": "Software Supply Chain Failures"
+      "name": "Software Supply Chain Failures",
+      "objective": "Probar inventario, procedencia, vulnerabilidades, mantenimiento, cambios y controles de integridad de la cadena de suministro.",
+      "cwes": [447, 1035, 1104, 1329, 1357, 1395],
+      "asvs": ["ASVS 5.0 V15 Secure Coding and Architecture", "ASVS 5.0 V1 Architecture, Design and Threat Modeling"],
+      "django_controls": [
+        "Dependencias con lockfile y fuentes oficiales",
+        "SBOM de dependencias directas y transitivas",
+        "Triado de CVE por exposicion real en runtime",
+        "Pipeline con secretos por entorno, separacion de deberes y runners endurecidos",
+        "Proceso de actualizacion y excepciones de seguridad"
+      ],
+      "automated_evidence": [
+        {"id": "pip_audit", "artifacts": ["F4/pip-audit.json"], "required": true},
+        {"id": "osv_scanner", "artifacts": ["F4/osv-source.json"], "required": true},
+        {"id": "trivy", "artifacts": ["F4/trivy.json"], "required": true},
+        {"id": "grype", "artifacts": ["F4/grype.json"], "required": true},
+        {"id": "cyclonedx_sbom", "artifacts": ["F4/sbom-cyclonedx.json"], "required": true},
+        {"id": "tool_versions", "artifacts": ["F1/tool-versions.txt"], "required": true}
+      ],
+      "manual_evidence": [
+        {"id": "supply_chain_review", "artifacts": ["F5/A03-supply-chain-review.md"], "required": true},
+        {"id": "cicd_hardening", "artifacts": ["F5/A03-cicd-hardening.md"], "required": false}
+      ],
+      "defectdojo_tags": ["owasp-2025", "A03", "django", "supply-chain", "sbom"]
     },
     {
       "id": "A04",
-      "name": "Cryptographic Failures"
+      "name": "Cryptographic Failures",
+      "objective": "Probar proteccion criptografica de datos sensibles en transito, reposo, cookies, secretos, claves y clientes salientes.",
+      "cwes": [261, 296, 319, 320, 321, 322, 323, 324, 325, 326, 327, 328, 329, 330, 331, 332, 334, 335, 336, 337, 338, 340, 342, 347, 523, 757, 759, 760, 780, 916, 1240, 1241],
+      "asvs": ["ASVS 5.0 V11 Cryptography", "ASVS 5.0 V12 Secure Communication", "ASVS 5.0 V14 Data Protection"],
+      "django_controls": [
+        "SECRET_KEY y claves fuera del codigo con rotacion definida",
+        "Password hashers modernos y validacion de credenciales debiles",
+        "TLS 1.2 o superior, HSTS y cookies Secure, HttpOnly y SameSite",
+        "Ausencia de verify=False, HTTP plano y algoritmos debiles",
+        "Clasificacion de datos y cifrado de campos o almacenamiento cuando aplique"
+      ],
+      "automated_evidence": [
+        {"id": "bandit", "artifacts": ["F4/bandit.json"], "required": true},
+        {"id": "ruff_security", "artifacts": ["F4/ruff-security.json"], "required": true},
+        {"id": "secret_scanners", "artifacts": ["F4/detect-secrets.json", "F4/gitleaks.json"], "required": true},
+        {"id": "testssl", "artifacts": ["F6/testssl-full.json"], "required": false},
+        {"id": "sslyze", "artifacts": ["F4/sslyze.json"], "required": false}
+      ],
+      "manual_evidence": [
+        {"id": "data_classification", "artifacts": ["F3/data-classification.md"], "required": true},
+        {"id": "key_rotation", "artifacts": ["F5/A04-key-rotation.md"], "required": false}
+      ],
+      "defectdojo_tags": ["owasp-2025", "A04", "django", "cryptography", "tls"]
     },
     {
       "id": "A05",
-      "name": "Injection"
+      "name": "Injection",
+      "objective": "Probar separacion entre datos y comandos en consultas, templates, shell, serializacion, XML, YAML, LLM y APIs.",
+      "cwes": [20, 74, 76, 77, 78, 79, 80, 83, 86, 88, 89, 90, 91, 93, 94, 95, 96, 97, 98, 99, 103, 104, 112, 113, 114, 115, 116, 129, 159, 470, 493, 500, 564, 610, 643, 644, 917],
+      "asvs": ["ASVS 5.0 V5 Validation, Sanitization and Encoding", "ASVS 5.0 V16 Security Logging and Error Handling"],
+      "django_controls": [
+        "ORM y queries parametrizadas sin concatenacion de entrada",
+        "Forms y serializers con validacion positiva server-side",
+        "Templates con autoescape, json_script y uso minimo de safe o mark_safe",
+        "Sin eval, exec, shell=True, YAML inseguro ni pickle de entrada no confiable",
+        "DAST y fuzzing sobre parametros, headers, cookies, JSON, XML y formularios"
+      ],
+      "automated_evidence": [
+        {"id": "semgrep_django", "artifacts": ["F4/semgrep-django.json"], "required": true},
+        {"id": "bandit", "artifacts": ["F4/bandit.json"], "required": true},
+        {"id": "ruff_security", "artifacts": ["F4/ruff-security.json"], "required": true},
+        {"id": "djlint", "artifacts": ["F4/djlint.txt"], "required": true},
+        {"id": "zap_baseline", "artifacts": ["F6/zap-baseline.xml"], "required": false}
+      ],
+      "manual_evidence": [
+        {"id": "dangerous_sinks_review", "artifacts": ["F5/A05-dangerous-sinks.md"], "required": true},
+        {"id": "api_fuzzing", "artifacts": ["F6/api-fuzzing.json"], "required": false}
+      ],
+      "defectdojo_tags": ["owasp-2025", "A05", "django", "injection", "xss"]
     },
     {
       "id": "A06",
-      "name": "Insecure Design"
+      "name": "Insecure Design",
+      "objective": "Probar que flujos criticos tienen requisitos de seguridad, threat model, limites de negocio, abuso esperado y validaciones server-side.",
+      "cwes": [73, 183, 256, 266, 269, 286, 311, 312, 313, 316, 362, 382, 419, 434, 436, 444, 451, 454, 472, 501, 522, 525, 539, 598, 602, 628, 642, 646, 653, 656, 657, 676, 693, 799, 807, 841, 1021, 1022, 1125],
+      "asvs": ["ASVS 5.0 V1 Architecture, Design and Threat Modeling", "ASVS 5.0 V15 Secure Coding and Architecture"],
+      "django_controls": [
+        "Threat model para autenticacion, autorizacion, tenant, pagos, exportaciones y acciones destructivas",
+        "Misuse cases y abuso de negocio por flujo critico",
+        "Rate limits, quotas y aprobaciones para acciones de alto impacto",
+        "Reglas de negocio aplicadas en servidor, no solo en frontend",
+        "Separacion de tenants y dominios de datos desde el modelo"
+      ],
+      "automated_evidence": [
+        {"id": "django_urls", "artifacts": ["F2/django-urls.json"], "required": true},
+        {"id": "django_settings", "artifacts": ["F2/django-settings.json"], "required": true},
+        {"id": "checkov", "artifacts": ["F4/checkov.json"], "required": false}
+      ],
+      "manual_evidence": [
+        {"id": "threat_model", "artifacts": ["F3/threat-model.md"], "required": true},
+        {"id": "abuse_cases", "artifacts": ["F3/abuse-cases.md"], "required": true},
+        {"id": "business_limits", "artifacts": ["F3/business-limits.md"], "required": true}
+      ],
+      "defectdojo_tags": ["owasp-2025", "A06", "django", "secure-design", "threat-model"]
     },
     {
       "id": "A07",
-      "name": "Authentication Failures"
+      "name": "Authentication Failures",
+      "objective": "Probar identidad, sesiones, recuperacion, MFA, throttling, mensajes genericos y validacion de tokens en todos los caminos de autenticacion.",
+      "cwes": [258, 259, 287, 288, 289, 290, 291, 293, 294, 295, 297, 298, 299, 300, 302, 303, 304, 305, 306, 307, 308, 309, 346, 350, 384, 521, 613, 620, 640, 798, 940, 941, 1390, 1391, 1392, 1393],
+      "asvs": ["ASVS 5.0 V6 Authentication", "ASVS 5.0 V7 Session Management"],
+      "django_controls": [
+        "django.contrib.auth o proveedor IdP mantenido para login, logout y recuperacion",
+        "Validadores de password y bloqueo de credenciales debiles o filtradas",
+        "MFA para roles privilegiados y acciones criticas",
+        "Rotacion de sesion tras login y expiracion tras inactividad",
+        "Throttling contra brute force, password spraying y credential stuffing"
+      ],
+      "automated_evidence": [
+        {"id": "django_settings", "artifacts": ["F2/django-settings.json"], "required": true},
+        {"id": "django_check_deploy", "artifacts": ["status/django-check-deploy.log"], "required": true},
+        {"id": "semgrep_django", "artifacts": ["F4/semgrep-django.json"], "required": true},
+        {"id": "zap_baseline", "artifacts": ["F6/zap-baseline.xml"], "required": false}
+      ],
+      "manual_evidence": [
+        {"id": "auth_flow_review", "artifacts": ["F5/A07-auth-flow-review.md"], "required": true},
+        {"id": "mfa_review", "artifacts": ["F5/A07-mfa-review.md"], "required": true},
+        {"id": "session_tests", "artifacts": ["F2/session-tests.json"], "required": false}
+      ],
+      "defectdojo_tags": ["owasp-2025", "A07", "django", "authentication", "session"]
     },
     {
       "id": "A08",
-      "name": "Software or Data Integrity Failures"
+      "name": "Software or Data Integrity Failures",
+      "objective": "Probar que codigo, dependencias, datos serializados, uploads, cookies, pipeline y actualizaciones mantienen integridad verificable.",
+      "cwes": [345, 353, 426, 427, 494, 502, 506, 509, 565, 784, 829, 830, 915, 926],
+      "asvs": ["ASVS 5.0 V15 Secure Coding and Architecture", "ASVS 5.0 V14 Data Protection"],
+      "django_controls": [
+        "Sin pickle, yaml.load ni deserializacion no confiable",
+        "Serializers y ModelForms con allowlist de campos",
+        "Uploads con validacion de tipo, tamano, contenido y almacenamiento aislado",
+        "Cookies, tokens y datos cliente firmados o no confiables por defecto",
+        "Artefactos y dependencias con procedencia, firma o hash cuando aplique"
+      ],
+      "automated_evidence": [
+        {"id": "bandit", "artifacts": ["F4/bandit.json"], "required": true},
+        {"id": "ruff_security", "artifacts": ["F4/ruff-security.json"], "required": true},
+        {"id": "semgrep_django", "artifacts": ["F4/semgrep-django.json"], "required": true},
+        {"id": "cyclonedx_sbom", "artifacts": ["F4/sbom-cyclonedx.json"], "required": true},
+        {"id": "checkov", "artifacts": ["F4/checkov.json"], "required": false}
+      ],
+      "manual_evidence": [
+        {"id": "upload_review", "artifacts": ["F5/A08-upload-review.md"], "required": true},
+        {"id": "pipeline_integrity", "artifacts": ["F5/A08-pipeline-integrity.md"], "required": false}
+      ],
+      "defectdojo_tags": ["owasp-2025", "A08", "django", "integrity", "deserialization"]
     },
     {
       "id": "A09",
-      "name": "Security Logging and Alerting Failures"
+      "name": "Security Logging and Alerting Failures",
+      "objective": "Probar que eventos de seguridad se registran, redaccion de datos sensibles funciona, alertas llegan y logs preservan integridad.",
+      "cwes": [117, 221, 223, 532, 778],
+      "asvs": ["ASVS 5.0 V16 Security Logging and Error Handling"],
+      "django_controls": [
+        "Logs estructurados con actor, accion, objeto, resultado, IP, timestamp y correlacion",
+        "Eventos de login, logout, lockout, autorizacion fallida, cambios de privilegio y acciones admin",
+        "Redaccion de tokens, passwords, cookies, secretos y datos personales completos",
+        "Sink centralizado o SIEM con alertas y playbooks",
+        "Proteccion de logs contra manipulacion, borrado y exposicion web"
+      ],
+      "automated_evidence": [
+        {"id": "django_settings", "artifacts": ["F2/django-settings.json"], "required": true},
+        {"id": "bandit", "artifacts": ["F4/bandit.json"], "required": false},
+        {"id": "zap_baseline", "artifacts": ["F6/zap-baseline.xml"], "required": false}
+      ],
+      "manual_evidence": [
+        {"id": "logging_matrix", "artifacts": ["F7/security-logging-matrix.md"], "required": true},
+        {"id": "alerting_evidence", "artifacts": ["F7/alerting-evidence.md"], "required": true},
+        {"id": "redaction_review", "artifacts": ["F7/redaction-review.md"], "required": true}
+      ],
+      "defectdojo_tags": ["owasp-2025", "A09", "django", "logging", "alerting"]
     },
     {
       "id": "A10",
-      "name": "Mishandling of Exceptional Conditions"
+      "name": "Mishandling of Exceptional Conditions",
+      "objective": "Probar manejo local y global de errores, fail closed, rollback, limites de recursos, timeouts y respuestas genericas ante estados anormales.",
+      "cwes": [209, 215, 234, 235, 248, 252, 274, 280, 369, 390, 391, 394, 396, 397, 460, 476, 478, 484, 550, 636, 703, 754, 755, 756],
+      "asvs": ["ASVS 5.0 V16.5 Error Handling", "ASVS 5.0 V5 Validation, Sanitization and Encoding"],
+      "django_controls": [
+        "Handlers globales de 400, 403, 404, 429 y 500 sin informacion sensible",
+        "Validacion temprana de parametros faltantes, extra o invalidos",
+        "Transacciones atomicas y rollback completo ante errores parciales",
+        "Timeouts, cuotas, limites de upload y throttling",
+        "Logging y alertas para errores repetidos sin filtrar detalles al cliente"
+      ],
+      "automated_evidence": [
+        {"id": "django_check_deploy", "artifacts": ["status/django-check-deploy.log"], "required": true},
+        {"id": "ruff_security", "artifacts": ["F4/ruff-security.json"], "required": true},
+        {"id": "bandit", "artifacts": ["F4/bandit.json"], "required": true},
+        {"id": "zap_baseline", "artifacts": ["F6/zap-baseline.xml"], "required": false},
+        {"id": "nuclei", "artifacts": ["F6/nuclei-full.json"], "required": false}
+      ],
+      "manual_evidence": [
+        {"id": "exception_handling_review", "artifacts": ["F8/exception-handling-review.md"], "required": true},
+        {"id": "resilience_tests", "artifacts": ["F8/resilience-tests.json"], "required": false},
+        {"id": "rollback_review", "artifacts": ["F8/rollback-review.md"], "required": true}
+      ],
+      "defectdojo_tags": ["owasp-2025", "A10", "django", "exception-handling", "resilience"]
     }
   ]
 }
