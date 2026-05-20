@@ -94,13 +94,16 @@ owasp/
 |-- Dockerfile                         # Toolbox generica de auditoria Django/OWASP
 |-- audit-kit/
 |   |-- audit.env.example              # Variables de entorno de ejemplo
-|   |-- owasp-top10-2025.json          # Taxonomia OWASP Top 10:2025 usada por el kit
+|   |-- evidence-schema.json            # Contrato versionado del manifiesto de evidencia
+|   |-- owasp-top10-2025.json          # Modelo tecnico OWASP Top 10:2025 para Django
 |   |-- scripts/
 |   |   |-- run_owasp_audit.sh         # Runner parametrizable
+|   |   |-- build_evidence_manifest.py  # Generador de manifiesto de evidencia
 |   |   |-- import_defectdojo.py       # Importador generico a DefectDojo via API token
 |   |   `-- summarize_artifacts.py     # Resumen tecnico saneado de artefactos
 |   `-- templates/
-|       `-- curated-findings.example.json
+|       |-- curated-findings.example.json
+|       `-- evidence-manifest.example.json
 |-- defectdojo/
 |   |-- docker-compose.yml             # DefectDojo local
 |   `-- import_findings.py             # Wrapper para evidencia externa
@@ -118,7 +121,7 @@ owasp/
 
 Este repositorio es un toolkit automatizable para auditorias OWASP Top 10:2025 sobre proyectos Django. Su objetivo es ejecutar controles repetibles, conservar artefactos técnicos crudos, resumir resultados sin exponer secretos e importar evidencia compatible a DefectDojo como fuente canonica.
 
-Automatiza gran parte de la recoleccion técnica: SAST, SCA, SBOM, IaC, secret scanning, TLS, DAST pasivo/no autenticado, checks nativos de Django, resumen técnico saneado e importacion a DefectDojo. El toolkit no pretende convertir OWASP en un proceso 100% automatico: A06, A09, abuso de logica, IDOR real, controles de MFA, logging operacional y DAST autenticado requieren validacion especifica por proyecto.
+Automatiza gran parte de la recoleccion técnica: SAST, SCA, SBOM, IaC, secret scanning, TLS, DAST pasivo/no autenticado, checks nativos de Django, resumen técnico saneado, manifiesto de evidencia e importacion a DefectDojo. El toolkit no pretende convertir OWASP en un proceso 100% automatico: A06, A09, abuso de logica, IDOR real, controles de MFA, logging operacional y DAST autenticado requieren validacion especifica por proyecto.
 
 Fuera de alcance por defecto: explotacion ofensiva, generacion de HTML nuevo, DAST autenticado sin autorizacion explicita, bypass de WAF/bot-detection, importacion automatica de artefactos con secretos, y uso de DefectDojo con usuario/password en vez de `DD_API_TOKEN`.
 
@@ -129,6 +132,7 @@ Fuera de alcance por defecto: explotacion ofensiva, generacion de HTML nuevo, DA
 - Las ejecuciones nuevas se escriben por defecto en `audit-kit/runs/<producto>-<timestamp>/reports/`.
 - DefectDojo es la UI canonica de las auditorias.
 - Los artefactos crudos se preservan localmente para trazabilidad/importacion, pero quedan fuera del repositorio.
+- Cada ejecucion genera `evidence-manifest.json` conforme a `audit-kit/evidence-schema.json`.
 
 ## Requisitos
 
@@ -222,8 +226,9 @@ Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar 
 4. Conserva artefactos crudos en `$OUTPUT_DIR/reports/`.
 5. Importa a DefectDojo si existe `--dd-token` o `DD_API_TOKEN`.
 6. Escribe `$OUTPUT_DIR/reports/summary.json` con conteos saneados.
-7. Imprime estado de importacion a DefectDojo y checklist de controles no automatizables OWASP Top 10:2025.
-8. Solo abre DefectDojo si se usa `--open-defectdojo`.
+7. Escribe `$OUTPUT_DIR/reports/evidence-manifest.json` con artefactos, autorizaciones y cobertura por categoria.
+8. Imprime estado de importacion a DefectDojo y checklist de controles no automatizables OWASP Top 10:2025.
+9. Solo abre DefectDojo si se usa `--open-defectdojo`.
 
 ## Parametros
 

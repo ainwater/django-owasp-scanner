@@ -366,6 +366,13 @@ for sf in "${STATUS_DIR}"/*.status; do
 done
 
 python3 "${SCRIPT_DIR}/summarize_artifacts.py" "$REPORTS_DIR" || true
+AUDIT_DAST_AUTHORIZED="$DAST_AUTHORIZED" \
+AUDIT_RUN_ZAP="$RUN_ZAP" \
+AUDIT_RUN_NUCLEI="$RUN_NUCLEI" \
+AUDIT_RUN_TRUFFLEHOG="$RUN_TRUFFLEHOG" \
+SKIP_DD_IMPORT="$SKIP_DD_IMPORT" \
+DD_API_TOKEN="$DD_API_TOKEN" \
+python3 "${SCRIPT_DIR}/build_evidence_manifest.py" "$REPORTS_DIR" || true
 
 printf '\n══════════════════════════════════════\n'
 printf 'Artefactos\n'

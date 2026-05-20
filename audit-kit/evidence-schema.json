@@ -1,0 +1,113 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ainwater.local/schemas/owasp-django-evidence-manifest.json",
+  "title": "OWASP Django Evidence Manifest",
+  "type": "object",
+  "required": ["schema_version", "owasp_version", "generated_at", "product", "project", "run", "authorization", "artifacts", "coverage"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {"type": "string", "const": "1.0"},
+    "owasp_version": {"type": "string", "const": "OWASP Top 10:2025"},
+    "generated_at": {"type": "string"},
+    "product": {"type": "string", "minLength": 1},
+    "project": {
+      "type": "object",
+      "required": ["path", "settings_module", "target_url"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string"},
+        "settings_module": {"type": "string"},
+        "target_url": {"type": "string"}
+      }
+    },
+    "run": {
+      "type": "object",
+      "required": ["output_dir", "reports_dir", "timestamp", "runner"],
+      "additionalProperties": false,
+      "properties": {
+        "output_dir": {"type": "string"},
+        "reports_dir": {"type": "string"},
+        "timestamp": {"type": "string"},
+        "runner": {"type": "string"}
+      }
+    },
+    "authorization": {
+      "type": "object",
+      "required": ["dast", "zap", "nuclei", "active_dast", "trufflehog", "defectdojo_import"],
+      "additionalProperties": false,
+      "properties": {
+        "dast": {"type": "boolean"},
+        "zap": {"type": "boolean"},
+        "nuclei": {"type": "boolean"},
+        "active_dast": {"type": "boolean"},
+        "trufflehog": {"type": "boolean"},
+        "defectdojo_import": {"type": "boolean"}
+      }
+    },
+    "artifacts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "array",
+        "items": {"$ref": "#/$defs/artifact"}
+      }
+    },
+    "coverage": {
+      "type": "array",
+      "minItems": 10,
+      "items": {"$ref": "#/$defs/category"}
+    },
+    "manual_signoff": {
+      "type": "array",
+      "items": {"$ref": "#/$defs/signoff"}
+    }
+  },
+  "$defs": {
+    "artifact": {
+      "type": "object",
+      "required": ["path", "exists", "bytes"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {"type": "string"},
+        "exists": {"type": "boolean"},
+        "bytes": {"type": "integer", "minimum": 0},
+        "sha256": {"type": "string"}
+      }
+    },
+    "category": {
+      "type": "object",
+      "required": ["id", "name", "automated", "manual", "required_manual_missing"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string", "pattern": "^A(0[1-9]|10)$"},
+        "name": {"type": "string"},
+        "automated": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+        "manual": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
+        "required_manual_missing": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "required": ["id", "required", "status", "artifacts"],
+      "additionalProperties": false,
+      "properties": {
+        "id": {"type": "string"},
+        "required": {"type": "boolean"},
+        "status": {"type": "string", "enum": ["present", "missing", "optional_missing"]},
+        "artifacts": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "signoff": {
+      "type": "object",
+      "required": ["category", "control", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "category": {"type": "string", "pattern": "^A(0[1-9]|10)$"},
+        "control": {"type": "string"},
+        "status": {"type": "string", "enum": ["pending", "accepted", "rejected", "not_applicable"]},
+        "owner": {"type": "string"},
+        "reviewed_at": {"type": "string"},
+        "notes": {"type": "string"}
+      }
+    }
+  }
+}

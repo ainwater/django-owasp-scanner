@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "owasp_version": "OWASP Top 10:2025",
+  "generated_at": "2026-05-20T00:00:00Z",
+  "product": "Nombre del Producto",
+  "project": {
+    "path": "/ruta/absoluta/al/proyecto-django",
+    "settings_module": "config.settings",
+    "target_url": "https://staging.ejemplo.com"
+  },
+  "run": {
+    "output_dir": "/ruta/a/audit-kit/runs/producto-20260520T000000Z",
+    "reports_dir": "/ruta/a/audit-kit/runs/producto-20260520T000000Z/reports",
+    "timestamp": "20260520T000000Z",
+    "runner": "audit-kit/scripts/run_owasp_audit.sh"
+  },
+  "authorization": {
+    "dast": true,
+    "zap": true,
+    "nuclei": true,
+    "active_dast": false,
+    "trufflehog": false,
+    "defectdojo_import": true
+  },
+  "artifacts": {
+    "F1": [
+      {
+        "path": "F1/tool-versions.txt",
+        "exists": true,
+        "bytes": 1200,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      }
+    ]
+  },
+  "coverage": [
+    {"id": "A01", "name": "Broken Access Control", "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A02", "name": "Security Misconfiguration", "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A03", "name": "Software Supply Chain Failures", "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A04", "name": "Cryptographic Failures", "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A05", "name": "Injection", "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A06", "name": "Insecure Design", "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A07", "name": "Authentication Failures", "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A08", "name": "Software or Data Integrity Failures", "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A09", "name": "Security Logging and Alerting Failures", "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A10", "name": "Mishandling of Exceptional Conditions", "automated": [], "manual": [], "required_manual_missing": []}
+  ],
+  "manual_signoff": [
+    {
+      "category": "A01",
+      "control": "authz_matrix",
+      "status": "pending",
+      "owner": "security",
+      "reviewed_at": "",
+      "notes": ""
+    }
+  ]
+}
