@@ -14,10 +14,12 @@ ROOT = Path(__file__).resolve().parents[2]
 MODEL = ROOT / "audit-kit" / "owasp-top10-2025.json"
 
 
-def load_json(path: Path) -> dict[str, Any]:
+def load_json(path: Path, required: bool = False) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text())
-    except Exception:
+    except Exception as exc:
+        if required:
+            raise RuntimeError(f"Failed to load required file {path}: {exc}") from exc
         return {}
     return data if isinstance(data, dict) else {}
 
@@ -40,6 +42,8 @@ def artifact(reports: Path, relative_path: str) -> dict[str, Any]:
 
 
 def status_for(reports: Path, paths: list[str], required: bool) -> str:
+    if not paths:
+        return "missing" if required else "optional_missing"
     checks = [(reports / path).is_file() and (reports / path).stat().st_size > 0 for path in paths]
     present = all(checks) if required else any(checks)
     if present:
@@ -96,10 +100,19 @@ def is_true(value: str) -> bool:
     return value.lower() in {"1", "true", "yes", "y", "si"}
 
 
+def relative_to_root(path_str: str) -> str:
+    if not path_str:
+        return ""
+    try:
+        return Path(path_str).relative_to(ROOT).as_posix()
+    except ValueError:
+        return path_str
+
+
 def build(reports: Path) -> dict[str, Any]:
     metadata = load_json(reports / "metadata.json")
-    model = load_json(MODEL)
-    product = os.getenv("AUDIT_PRODUCT_NAME") or metadata.get("product") or "Django Application"
+    model = load_json(MODEL, required=True)
+    product = os.getenv("AUDIT_PRODUCT_NAME") or metadata.get("product") or "Application"
     timestamp = metadata.get("timestamp", "")
     dast = bool(metadata.get("target_url")) and is_true(os.getenv("AUDIT_DAST_AUTHORIZED", "false"))
     return {
@@ -108,13 +121,13 @@ def build(reports: Path) -> dict[str, Any]:
         "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "product": product,
         "project": {
-            "path": metadata.get("project", ""),
+            "path": relative_to_root(metadata.get("project", "")),
             "settings_module": metadata.get("settings_module", ""),
             "target_url": metadata.get("target_url", ""),
         },
         "run": {
-            "output_dir": metadata.get("output_dir", ""),
-            "reports_dir": str(reports),
+            "output_dir": relative_to_root(metadata.get("output_dir", "")),
+            "reports_dir": relative_to_root(str(reports)),
             "timestamp": timestamp,
             "runner": "audit-kit/scripts/run_owasp_audit.sh",
         },

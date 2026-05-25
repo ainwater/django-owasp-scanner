@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://ainwater.local/schemas/owasp-django-evidence-manifest.json",
+  "$id": "urn:owasp:audit-kit:evidence-manifest:1.0",
   "title": "OWASP Django Evidence Manifest",
   "type": "object",
   "required": ["schema_version", "owasp_version", "generated_at", "product", "project", "run", "authorization", "artifacts", "coverage"],
@@ -8,7 +8,7 @@
   "properties": {
     "schema_version": {"type": "string", "const": "1.0"},
     "owasp_version": {"type": "string", "const": "OWASP Top 10:2025"},
-    "generated_at": {"type": "string"},
+    "generated_at": {"type": "string", "format": "date-time"},
     "product": {"type": "string", "minLength": 1},
     "project": {
       "type": "object",
@@ -105,7 +105,7 @@
         "control": {"type": "string"},
         "status": {"type": "string", "enum": ["pending", "accepted", "rejected", "not_applicable"]},
         "owner": {"type": "string"},
-        "reviewed_at": {"type": "string"},
+        "reviewed_at": {"type": "string", "format": "date-time"},
         "notes": {"type": "string"}
       }
     }

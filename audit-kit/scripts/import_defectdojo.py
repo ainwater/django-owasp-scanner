@@ -35,7 +35,7 @@ def metadata() -> dict[str, Any]:
 
 
 META = metadata()
-PRODUCT_NAME = os.getenv("DD_PRODUCT_NAME") or META.get("product") or "Django Application"
+PRODUCT_NAME = os.getenv("DD_PRODUCT_NAME") or META.get("product") or "Application"
 ENGAGEMENT_NAME = os.getenv("DD_ENGAGEMENT_NAME", "OWASP Top 10:2025 - Audit")
 BLOCKED_AUTO_IMPORT_LABELS = {"gitleaks", "detect-secrets", "trufflehog"}
 

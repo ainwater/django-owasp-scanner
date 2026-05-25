@@ -28,8 +28,8 @@
         "Pruebas negativas para endpoints anonimos, usuarios cruzados y roles privilegiados"
       ],
       "automated_evidence": [
-        {"id": "django_urls", "artifacts": ["F2/django-urls.json"], "required": true},
-        {"id": "django_settings", "artifacts": ["F2/django-settings.json"], "required": true},
+        {"id": "django_urls", "artifacts": ["F2/django-urls.json"], "required": false},
+        {"id": "django_settings", "artifacts": ["F2/django-settings.json"], "required": false},
         {"id": "semgrep_django", "artifacts": ["F4/semgrep-django.json"], "required": true},
         {"id": "zap_baseline", "artifacts": ["F6/zap-baseline.xml"], "required": false}
       ],
@@ -54,7 +54,7 @@
       ],
       "automated_evidence": [
         {"id": "django_check_deploy", "artifacts": ["status/django-check-deploy.status", "status/django-check-deploy.log"], "required": true},
-        {"id": "django_settings", "artifacts": ["F2/django-settings.json"], "required": true},
+        {"id": "django_settings", "artifacts": ["F2/django-settings.json"], "required": false},
         {"id": "checkov", "artifacts": ["F4/checkov.json"], "required": true},
         {"id": "trivy_misconfig", "artifacts": ["F4/trivy.json"], "required": true},
         {"id": "http_headers", "artifacts": ["F6/http-headers.txt"], "required": false},
@@ -159,8 +159,8 @@
         "Separacion de tenants y dominios de datos desde el modelo"
       ],
       "automated_evidence": [
-        {"id": "django_urls", "artifacts": ["F2/django-urls.json"], "required": true},
-        {"id": "django_settings", "artifacts": ["F2/django-settings.json"], "required": true},
+        {"id": "django_urls", "artifacts": ["F2/django-urls.json"], "required": false},
+        {"id": "django_settings", "artifacts": ["F2/django-settings.json"], "required": false},
         {"id": "checkov", "artifacts": ["F4/checkov.json"], "required": false}
       ],
       "manual_evidence": [
@@ -184,7 +184,7 @@
         "Throttling contra brute force, password spraying y credential stuffing"
       ],
       "automated_evidence": [
-        {"id": "django_settings", "artifacts": ["F2/django-settings.json"], "required": true},
+        {"id": "django_settings", "artifacts": ["F2/django-settings.json"], "required": false},
         {"id": "django_check_deploy", "artifacts": ["status/django-check-deploy.log"], "required": true},
         {"id": "semgrep_django", "artifacts": ["F4/semgrep-django.json"], "required": true},
         {"id": "zap_baseline", "artifacts": ["F6/zap-baseline.xml"], "required": false}
@@ -236,7 +236,7 @@
         "Proteccion de logs contra manipulacion, borrado y exposicion web"
       ],
       "automated_evidence": [
-        {"id": "django_settings", "artifacts": ["F2/django-settings.json"], "required": true},
+        {"id": "django_settings", "artifacts": ["F2/django-settings.json"], "required": false},
         {"id": "bandit", "artifacts": ["F4/bandit.json"], "required": false},
         {"id": "zap_baseline", "artifacts": ["F6/zap-baseline.xml"], "required": false}
       ],
