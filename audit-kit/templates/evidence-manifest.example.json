@@ -50,7 +50,6 @@
       "control": "authz_matrix",
       "status": "pending",
       "owner": "security",
-      "reviewed_at": "",
       "notes": ""
     }
   ]

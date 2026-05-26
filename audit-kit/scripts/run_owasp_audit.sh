@@ -372,7 +372,7 @@ AUDIT_RUN_NUCLEI="$RUN_NUCLEI" \
 AUDIT_RUN_TRUFFLEHOG="$RUN_TRUFFLEHOG" \
 SKIP_DD_IMPORT="$SKIP_DD_IMPORT" \
 DD_API_TOKEN="$DD_API_TOKEN" \
-python3 "${SCRIPT_DIR}/build_evidence_manifest.py" "$REPORTS_DIR"
+python3 "${SCRIPT_DIR}/build_evidence_manifest.py" "$REPORTS_DIR" > "${STATUS_DIR}/evidence-manifest.log" 2>&1
 manifest_rc=$?
 write_status "evidence-manifest" "host" "$manifest_rc" "build_evidence_manifest.py $REPORTS_DIR"
 if [[ "$manifest_rc" != "0" ]]; then

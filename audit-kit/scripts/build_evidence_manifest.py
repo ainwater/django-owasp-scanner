@@ -135,7 +135,7 @@ def build(reports: Path) -> dict[str, Any]:
             "dast": dast,
             "zap": dast and is_true(os.getenv("AUDIT_RUN_ZAP", "true")),
             "nuclei": dast and is_true(os.getenv("AUDIT_RUN_NUCLEI", "true")),
-            "active_dast": is_true(os.getenv("AUDIT_ACTIVE_DAST_AUTHORIZED", "false")),
+            "active_dast": dast and is_true(os.getenv("AUDIT_ACTIVE_DAST_AUTHORIZED", "false")),
             "trufflehog": is_true(os.getenv("AUDIT_RUN_TRUFFLEHOG", "false")),
             "defectdojo_import": bool(os.getenv("DD_API_TOKEN")) and not is_true(os.getenv("SKIP_DD_IMPORT", "false")),
         },
