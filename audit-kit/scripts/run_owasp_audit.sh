@@ -365,7 +365,12 @@ for sf in "${STATUS_DIR}"/*.status; do
     fi
 done
 
-python3 "${SCRIPT_DIR}/summarize_artifacts.py" "$REPORTS_DIR" || true
+python3 "${SCRIPT_DIR}/summarize_artifacts.py" "$REPORTS_DIR" > "${STATUS_DIR}/summarize-artifacts.log" 2>&1
+summarize_rc=$?
+write_status "summarize-artifacts" "host" "$summarize_rc" "summarize_artifacts.py $REPORTS_DIR"
+if [[ "$summarize_rc" != "0" ]]; then
+    printf '\n[ERROR] summarize-artifacts failed (exit %s)\n' "$summarize_rc" >&2
+fi
 AUDIT_DAST_AUTHORIZED="$DAST_AUTHORIZED" \
 AUDIT_RUN_ZAP="$RUN_ZAP" \
 AUDIT_RUN_NUCLEI="$RUN_NUCLEI" \

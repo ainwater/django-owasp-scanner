@@ -21,7 +21,11 @@ def load_json(path: Path, required: bool = False) -> dict[str, Any]:
         if required:
             raise RuntimeError(f"Failed to load required file {path}: {exc}") from exc
         return {}
-    return data if isinstance(data, dict) else {}
+    if not isinstance(data, dict):
+        if required:
+            raise RuntimeError(f"File {path} is not a JSON object")
+        return {}
+    return data
 
 
 def digest(path: Path) -> str:
