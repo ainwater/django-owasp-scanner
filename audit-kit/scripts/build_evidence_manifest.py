@@ -73,7 +73,7 @@ def evidence(reports: Path, items: list[dict[str, Any]]) -> list[dict[str, Any]]
 
 def artifact_groups(reports: Path) -> dict[str, list[dict[str, Any]]]:
     groups: dict[str, list[dict[str, Any]]] = {}
-    for name in ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8"]:
+    for name in ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "status"]:
         directory = reports / name
         files = []
         if directory.exists():
@@ -107,10 +107,11 @@ def is_true(value: str) -> bool:
 def relative_to_root(path_str: str) -> str:
     if not path_str:
         return ""
+    path = Path(path_str)
     try:
-        return Path(path_str).relative_to(ROOT).as_posix()
+        return path.relative_to(ROOT).as_posix()
     except ValueError:
-        return path_str
+        return path.name
 
 
 def build(reports: Path) -> dict[str, Any]:

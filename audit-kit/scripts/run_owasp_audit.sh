@@ -55,6 +55,7 @@ Opcionales:
   --skip-dd-import             No importar artefactos a DefectDojo al finalizar
   --run-trufflehog             Ejecutar TruffleHog (produce evidencia con secretos)
   --authorize-dast             Confirma autorización explícita para DAST pasivo/no autenticado
+  --authorize-active-dast      Confirma autorización explícita para DAST activo (mutaciones)
   --open-defectdojo            Abrir DefectDojo al finalizar si la importación fue exitosa
   --generate-only              Solo estructura e inventario, sin escáneres
   --no-build                   No reconstruir imagen Docker si no existe
@@ -95,6 +96,7 @@ while [[ $# -gt 0 ]]; do
         --skip-dd-import) SKIP_DD_IMPORT="true"; shift ;;
         --run-trufflehog) RUN_TRUFFLEHOG="true"; shift ;;
         --authorize-dast) DAST_AUTHORIZED="true"; shift ;;
+        --authorize-active-dast) ACTIVE_DAST_AUTHORIZED="true"; shift ;;
         --open-defectdojo) OPEN_DD="true"; shift ;;
         --generate-only) GENERATE_ONLY="true"; shift ;;
         --no-build) BUILD_IMAGE="false"; shift ;;
@@ -366,7 +368,7 @@ for sf in "${STATUS_DIR}"/*.status; do
     fi
 done
 
-python3 "${SCRIPT_DIR}/summarize_artifacts.py" "$REPORTS_DIR" > "${STATUS_DIR}/summarize-artifacts.log" 2>&1
+python3 "${SCRIPT_DIR}/summarize_artifacts.py" "$REPORTS_DIR" 2> "${STATUS_DIR}/summarize-artifacts.log"
 summarize_rc=$?
 write_status "summarize-artifacts" "host" "$summarize_rc" "summarize_artifacts.py $REPORTS_DIR"
 if [[ "$summarize_rc" != "0" ]]; then
