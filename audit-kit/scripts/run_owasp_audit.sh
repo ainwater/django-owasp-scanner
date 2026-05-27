@@ -18,6 +18,7 @@ RUN_NUCLEI="${AUDIT_RUN_NUCLEI:-true}"
 RUN_DJANGO_CHECKS="${AUDIT_RUN_DJANGO_CHECKS:-auto}"
 RUN_TRUFFLEHOG="${AUDIT_RUN_TRUFFLEHOG:-false}"
 DAST_AUTHORIZED="${AUDIT_DAST_AUTHORIZED:-false}"
+ACTIVE_DAST_AUTHORIZED="${AUDIT_ACTIVE_DAST_AUTHORIZED:-false}"
 DD_API_TOKEN="${DD_API_TOKEN:-}"
 DD_URL="${DD_URL:-http://localhost:8080}"
 SKIP_DD_IMPORT="${SKIP_DD_IMPORT:-false}"
@@ -54,6 +55,7 @@ Opcionales:
   --skip-dd-import             No importar artefactos a DefectDojo al finalizar
   --run-trufflehog             Ejecutar TruffleHog (produce evidencia con secretos)
   --authorize-dast             Confirma autorización explícita para DAST pasivo/no autenticado
+  --authorize-active-dast      Confirma autorización explícita para DAST activo (mutaciones)
   --open-defectdojo            Abrir DefectDojo al finalizar si la importación fue exitosa
   --generate-only              Solo estructura e inventario, sin escáneres
   --no-build                   No reconstruir imagen Docker si no existe
@@ -94,6 +96,7 @@ while [[ $# -gt 0 ]]; do
         --skip-dd-import) SKIP_DD_IMPORT="true"; shift ;;
         --run-trufflehog) RUN_TRUFFLEHOG="true"; shift ;;
         --authorize-dast) DAST_AUTHORIZED="true"; shift ;;
+        --authorize-active-dast) ACTIVE_DAST_AUTHORIZED="true"; shift ;;
         --open-defectdojo) OPEN_DD="true"; shift ;;
         --generate-only) GENERATE_ONLY="true"; shift ;;
         --no-build) BUILD_IMAGE="false"; shift ;;
@@ -365,7 +368,25 @@ for sf in "${STATUS_DIR}"/*.status; do
     fi
 done
 
-python3 "${SCRIPT_DIR}/summarize_artifacts.py" "$REPORTS_DIR" || true
+python3 "${SCRIPT_DIR}/summarize_artifacts.py" "$REPORTS_DIR" 2> "${STATUS_DIR}/summarize-artifacts.log"
+summarize_rc=$?
+write_status "summarize-artifacts" "host" "$summarize_rc" "summarize_artifacts.py $REPORTS_DIR"
+if [[ "$summarize_rc" != "0" ]]; then
+    printf '\n[ERROR] summarize-artifacts failed (exit %s)\n' "$summarize_rc" >&2
+fi
+AUDIT_DAST_AUTHORIZED="$DAST_AUTHORIZED" \
+AUDIT_ACTIVE_DAST_AUTHORIZED="$ACTIVE_DAST_AUTHORIZED" \
+AUDIT_RUN_ZAP="$RUN_ZAP" \
+AUDIT_RUN_NUCLEI="$RUN_NUCLEI" \
+AUDIT_RUN_TRUFFLEHOG="$RUN_TRUFFLEHOG" \
+SKIP_DD_IMPORT="$SKIP_DD_IMPORT" \
+DD_API_TOKEN="$DD_API_TOKEN" \
+python3 "${SCRIPT_DIR}/build_evidence_manifest.py" "$REPORTS_DIR" > "${STATUS_DIR}/evidence-manifest.log" 2>&1
+manifest_rc=$?
+write_status "evidence-manifest" "host" "$manifest_rc" "build_evidence_manifest.py $REPORTS_DIR"
+if [[ "$manifest_rc" != "0" ]]; then
+    printf '\n[ERROR] evidence-manifest generation failed (exit %s)\n' "$manifest_rc" >&2
+fi
 
 printf '\n══════════════════════════════════════\n'
 printf 'Artefactos\n'

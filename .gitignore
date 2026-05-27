@@ -11,3 +11,4 @@ __pycache__/
 *.py[cod]
 **/*.log
 **/*.status
+AGENTS.md
