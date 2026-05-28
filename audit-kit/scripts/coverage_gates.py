@@ -53,7 +53,7 @@ def evidence_rows(reports: Path, items: list[dict[str, Any]]) -> list[dict[str, 
 def percent(present: int, total: int) -> int:
     if total == 0:
         return 100
-    return int(round((present / total) * 100))
+    return (present * 100) // total
 
 
 def parse_threshold(value: str) -> int:

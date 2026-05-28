@@ -36,6 +36,33 @@ class RunOwaspAuditTest(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertIn("Coverage gates: fail", result.stderr)
 
+    def test_generate_only_returns_nonzero_when_manifest_generation_fails_after_gate_passes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            blocked_manifest = Path(tmp) / "reports" / "evidence-manifest.json"
+            blocked_manifest.mkdir(parents=True)
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--output",
+                    tmp,
+                    "--generate-only",
+                    "--skip-dd-import",
+                    "--coverage-threshold",
+                    "0",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("evidence-manifest generation failed", result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

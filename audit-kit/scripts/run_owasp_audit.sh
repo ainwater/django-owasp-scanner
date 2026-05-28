@@ -602,6 +602,7 @@ write_status "summarize-artifacts" "host" "$summarize_rc" "summarize_artifacts.p
 if [[ "$summarize_rc" != "0" ]]; then
     printf '\n[ERROR] summarize-artifacts failed (exit %s)\n' "$summarize_rc" >&2
 fi
+final_rc="$summarize_rc"
 AUDIT_DAST_AUTHORIZED="$DAST_AUTHORIZED" \
 AUDIT_ACTIVE_DAST_AUTHORIZED="$ACTIVE_DAST_AUTHORIZED" \
 AUDIT_RUN_ZAP="$RUN_ZAP" \
@@ -615,6 +616,9 @@ manifest_rc=$?
 write_status "evidence-manifest" "host" "$manifest_rc" "build_evidence_manifest.py $REPORTS_DIR"
 if [[ "$manifest_rc" != "0" ]]; then
     printf '\n[ERROR] evidence-manifest generation failed (exit %s)\n' "$manifest_rc" >&2
+fi
+if [[ "$final_rc" == "0" && "$manifest_rc" != "0" ]]; then
+    final_rc="$manifest_rc"
 fi
 coverage_rc="2"
 coverage_status="unknown"
@@ -636,6 +640,9 @@ if [[ "$coverage_rc" == "0" ]]; then
     printf 'Coverage gates: pass (%s%%/%s%%)\n' "$coverage_percent" "$COVERAGE_THRESHOLD"
 else
     printf '\n[ERROR] Coverage gates: %s (%s%%/%s%%)\n' "$coverage_status" "$coverage_percent" "$COVERAGE_THRESHOLD" >&2
+fi
+if [[ "$final_rc" == "0" && "$coverage_rc" != "0" ]]; then
+    final_rc="$coverage_rc"
 fi
 
 print_execution_summary
@@ -764,6 +771,4 @@ CHECKLIST
 
 printf '\nFinalizado.\n'
 printf 'Artefactos crudos: %s\n' "$REPORTS_DIR"
-if [[ "${coverage_rc:-0}" != "0" ]]; then
-    exit "$coverage_rc"
-fi
+exit "$final_rc"

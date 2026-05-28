@@ -9,11 +9,18 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "audit-kit" / "scripts" / "build_evidence_manifest.py"
-sys.path.insert(0, str(SCRIPT.parent))
+coverage_spec = importlib.util.spec_from_file_location("coverage_gates", SCRIPT.parent / "coverage_gates.py")
+coverage_gates = importlib.util.module_from_spec(coverage_spec)
+assert coverage_spec and coverage_spec.loader
+coverage_spec.loader.exec_module(coverage_gates)
+sys.modules["coverage_gates"] = coverage_gates
 SPEC = importlib.util.spec_from_file_location("build_evidence_manifest", SCRIPT)
 build_evidence_manifest = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
-SPEC.loader.exec_module(build_evidence_manifest)
+try:
+    SPEC.loader.exec_module(build_evidence_manifest)
+finally:
+    del sys.modules["coverage_gates"]
 
 
 def write_json(path: Path, data: dict) -> None:

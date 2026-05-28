@@ -101,6 +101,10 @@ class CoverageGatesTest(unittest.TestCase):
         self.assertEqual(result["categories"][0]["missing_required"], ["authz"])
         self.assertEqual(result["gates"]["status"], "pass")
 
+    def test_percent_uses_floor_integer_math(self) -> None:
+        self.assertEqual(coverage_gates.percent(1, 8), 12)
+        self.assertEqual(coverage_gates.percent(7, 8), 87)
+
     def test_optional_evidence_does_not_reduce_gate_score(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             reports = Path(tmp)
