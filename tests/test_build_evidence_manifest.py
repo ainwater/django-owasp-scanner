@@ -1,0 +1,89 @@
+from __future__ import annotations
+
+import importlib.util
+import json
+import sys
+import tempfile
+import unittest
+from pathlib import Path
+
+
+SCRIPT = Path(__file__).resolve().parents[1] / "audit-kit" / "scripts" / "build_evidence_manifest.py"
+sys.path.insert(0, str(SCRIPT.parent))
+SPEC = importlib.util.spec_from_file_location("build_evidence_manifest", SCRIPT)
+build_evidence_manifest = importlib.util.module_from_spec(SPEC)
+assert SPEC and SPEC.loader
+SPEC.loader.exec_module(build_evidence_manifest)
+
+
+def write_json(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data) + "\n")
+
+
+class BuildEvidenceManifestTest(unittest.TestCase):
+    def test_manifest_includes_coverage_gates_and_root_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            reports = root / "reports"
+            reports.mkdir()
+            model = root / "model.json"
+            build_evidence_manifest.MODEL = model
+            write_json(
+                model,
+                {
+                    "version": "OWASP Top 10:2025",
+                    "categories": [
+                        {
+                            "id": "A01",
+                            "name": "Broken Access Control",
+                            "automated_evidence": [
+                                {"id": "semgrep", "artifacts": ["F4/semgrep.json"], "required": True}
+                            ],
+                            "manual_evidence": [],
+                        }
+                    ],
+                },
+            )
+            write_json(
+                reports / "metadata.json",
+                {
+                    "product": "App",
+                    "project": str(root / "app"),
+                    "settings_module": "config.settings",
+                    "target_url": "",
+                    "output_dir": str(root),
+                    "timestamp": "20260528T000000Z",
+                },
+            )
+            write_json(reports / "F4" / "semgrep.json", {})
+            manifest = build_evidence_manifest.build(reports)
+            coverage = json.loads((reports / "coverage.json").read_text())
+            gates = json.loads((reports / "gates.json").read_text())
+
+        self.assertEqual(manifest["coverage_summary"]["coverage_percent"], 100)
+        self.assertEqual(manifest["gates"]["status"], "pass")
+        self.assertIn("root", manifest["artifacts"])
+        self.assertEqual(
+            sorted(item["path"] for item in manifest["artifacts"]["root"]),
+            ["coverage.json", "gates.json", "metadata.json", "summary.json"],
+        )
+        self.assertEqual(coverage, manifest["coverage"])
+        self.assertEqual(gates, manifest["gates"])
+
+    def test_manifest_records_missing_root_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reports = Path(tmp) / "reports"
+            reports.mkdir()
+
+            artifacts = build_evidence_manifest.artifact_groups(reports)
+
+        root_artifacts = {item["path"]: item for item in artifacts["root"]}
+        self.assertFalse(root_artifacts["metadata.json"]["exists"])
+        self.assertFalse(root_artifacts["summary.json"]["exists"])
+        self.assertFalse(root_artifacts["coverage.json"]["exists"])
+        self.assertFalse(root_artifacts["gates.json"]["exists"])
+
+
+if __name__ == "__main__":
+    unittest.main()

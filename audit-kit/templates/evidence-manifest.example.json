@@ -4,13 +4,13 @@
   "generated_at": "2026-05-20T00:00:00Z",
   "product": "Nombre del Producto",
   "project": {
-    "path": "/ruta/absoluta/al/proyecto-django",
+    "path": "proyecto-django",
     "settings_module": "config.settings",
     "target_url": "https://staging.ejemplo.com"
   },
   "run": {
-    "output_dir": "/ruta/a/audit-kit/runs/producto-20260520T000000Z",
-    "reports_dir": "/ruta/a/audit-kit/runs/producto-20260520T000000Z/reports",
+    "output_dir": "audit-kit/runs/producto-20260520T000000Z",
+    "reports_dir": "audit-kit/runs/producto-20260520T000000Z/reports",
     "timestamp": "20260520T000000Z",
     "runner": "audit-kit/scripts/run_owasp_audit.sh"
   },
@@ -23,6 +23,12 @@
     "defectdojo_import": true
   },
   "artifacts": {
+    "root": [
+      {"path": "metadata.json", "exists": true, "bytes": 420, "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},
+      {"path": "summary.json", "exists": true, "bytes": 900, "sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"},
+      {"path": "coverage.json", "exists": true, "bytes": 2400, "sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"},
+      {"path": "gates.json", "exists": true, "bytes": 160, "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"}
+    ],
     "F1": [
       {
         "path": "F1/tool-versions.txt",
@@ -33,17 +39,28 @@
     ]
   },
   "coverage": [
-    {"id": "A01", "name": "Broken Access Control", "automated": [], "manual": [], "required_manual_missing": []},
-    {"id": "A02", "name": "Security Misconfiguration", "automated": [], "manual": [], "required_manual_missing": []},
-    {"id": "A03", "name": "Software Supply Chain Failures", "automated": [], "manual": [], "required_manual_missing": []},
-    {"id": "A04", "name": "Cryptographic Failures", "automated": [], "manual": [], "required_manual_missing": []},
-    {"id": "A05", "name": "Injection", "automated": [], "manual": [], "required_manual_missing": []},
-    {"id": "A06", "name": "Insecure Design", "automated": [], "manual": [], "required_manual_missing": []},
-    {"id": "A07", "name": "Authentication Failures", "automated": [], "manual": [], "required_manual_missing": []},
-    {"id": "A08", "name": "Software or Data Integrity Failures", "automated": [], "manual": [], "required_manual_missing": []},
-    {"id": "A09", "name": "Security Logging and Alerting Failures", "automated": [], "manual": [], "required_manual_missing": []},
-    {"id": "A10", "name": "Mishandling of Exceptional Conditions", "automated": [], "manual": [], "required_manual_missing": []}
+    {"id": "A01", "name": "Broken Access Control", "status": "fail", "coverage_percent": 0, "required_present": 0, "required_total": 1, "missing_required": ["authz_matrix"], "automated": [], "manual": [], "required_manual_missing": ["authz_matrix"]},
+    {"id": "A02", "name": "Security Misconfiguration", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A03", "name": "Software Supply Chain Failures", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A04", "name": "Cryptographic Failures", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A05", "name": "Injection", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A06", "name": "Insecure Design", "status": "fail", "coverage_percent": 0, "required_present": 0, "required_total": 1, "missing_required": ["threat_model"], "automated": [], "manual": [], "required_manual_missing": ["threat_model"]},
+    {"id": "A07", "name": "Authentication Failures", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A08", "name": "Software or Data Integrity Failures", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A09", "name": "Security Logging and Alerting Failures", "status": "fail", "coverage_percent": 0, "required_present": 0, "required_total": 1, "missing_required": ["logging_matrix"], "automated": [], "manual": [], "required_manual_missing": ["logging_matrix"]},
+    {"id": "A10", "name": "Mishandling of Exceptional Conditions", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "automated": [], "manual": [], "required_manual_missing": []}
   ],
+  "coverage_summary": {
+    "coverage_percent": 70,
+    "required_present": 7,
+    "required_total": 10
+  },
+  "gates": {
+    "status": "fail",
+    "threshold": 80,
+    "coverage_percent": 70,
+    "failed_categories": ["A01", "A06", "A09"]
+  },
   "manual_signoff": [
     {
       "category": "A01",
