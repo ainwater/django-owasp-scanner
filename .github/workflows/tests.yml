@@ -1,0 +1,28 @@
+name: Tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+jobs:
+  audit-kit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run tests
+        run: python -m unittest discover -s tests -p "test_*.py"
+
+      - name: Compile Python scripts
+        run: python -m py_compile audit-kit/scripts/coverage_gates.py audit-kit/scripts/build_evidence_manifest.py audit-kit/scripts/summarize_artifacts.py audit-kit/scripts/import_defectdojo.py
+
+      - name: Check runner syntax
+        run: bash -n audit-kit/scripts/run_owasp_audit.sh

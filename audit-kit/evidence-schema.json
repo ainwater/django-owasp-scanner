@@ -3,7 +3,7 @@
   "$id": "urn:owasp:audit-kit:evidence-manifest:1.0",
   "title": "OWASP Django Evidence Manifest",
   "type": "object",
-  "required": ["schema_version", "owasp_version", "generated_at", "product", "project", "run", "authorization", "artifacts", "coverage"],
+  "required": ["schema_version", "owasp_version", "generated_at", "product", "project", "run", "authorization", "artifacts", "coverage", "coverage_summary", "gates"],
   "additionalProperties": false,
   "properties": {
     "schema_version": {"type": "string", "const": "1.0"},
@@ -56,6 +56,8 @@
       "minItems": 10,
       "items": {"$ref": "#/$defs/category"}
     },
+    "coverage_summary": {"$ref": "#/$defs/coverage_summary"},
+    "gates": {"$ref": "#/$defs/gates"},
     "manual_signoff": {
       "type": "array",
       "items": {"$ref": "#/$defs/signoff"}
@@ -75,14 +77,40 @@
     },
     "category": {
       "type": "object",
-      "required": ["id", "name", "automated", "manual", "required_manual_missing"],
+      "required": ["id", "name", "status", "coverage_percent", "required_present", "required_total", "missing_required", "automated", "manual", "required_manual_missing"],
       "additionalProperties": false,
       "properties": {
         "id": {"type": "string", "pattern": "^A(0[1-9]|10)$"},
         "name": {"type": "string"},
+        "status": {"type": "string", "enum": ["pass", "fail"]},
+        "coverage_percent": {"type": "integer", "minimum": 0, "maximum": 100},
+        "required_present": {"type": "integer", "minimum": 0},
+        "required_total": {"type": "integer", "minimum": 0},
+        "missing_required": {"type": "array", "items": {"type": "string"}},
         "automated": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
         "manual": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
         "required_manual_missing": {"type": "array", "items": {"type": "string"}}
+      }
+    },
+    "coverage_summary": {
+      "type": "object",
+      "required": ["coverage_percent", "required_present", "required_total"],
+      "additionalProperties": false,
+      "properties": {
+        "coverage_percent": {"type": "integer", "minimum": 0, "maximum": 100},
+        "required_present": {"type": "integer", "minimum": 0},
+        "required_total": {"type": "integer", "minimum": 0}
+      }
+    },
+    "gates": {
+      "type": "object",
+      "required": ["status", "threshold", "coverage_percent", "failed_categories"],
+      "additionalProperties": false,
+      "properties": {
+        "status": {"type": "string", "enum": ["pass", "fail"]},
+        "threshold": {"type": "integer", "minimum": 0, "maximum": 100},
+        "coverage_percent": {"type": "integer", "minimum": 0, "maximum": 100},
+        "failed_categories": {"type": "array", "items": {"type": "string", "pattern": "^A(0[1-9]|10)$"}}
       }
     },
     "evidence": {

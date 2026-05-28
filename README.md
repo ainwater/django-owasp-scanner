@@ -98,6 +98,7 @@ owasp/
 |   |-- owasp-top10-2025.json          # Modelo tecnico OWASP Top 10:2025 para Django
 |   |-- scripts/
 |   |   |-- run_owasp_audit.sh         # Runner parametrizable
+|   |   |-- coverage_gates.py           # Motor de cobertura y gates OWASP
 |   |   |-- build_evidence_manifest.py  # Generador de manifiesto de evidencia
 |   |   |-- import_defectdojo.py       # Importador generico a DefectDojo via API token
 |   |   `-- summarize_artifacts.py     # Resumen tecnico saneado de artefactos
@@ -132,7 +133,7 @@ Fuera de alcance por defecto: explotacion ofensiva, generacion de HTML nuevo, DA
 - Las ejecuciones nuevas se escriben por defecto en `audit-kit/runs/<producto>-<timestamp>/reports/`.
 - DefectDojo es la UI canonica de las auditorias.
 - Los artefactos crudos se preservan localmente para trazabilidad/importacion, pero quedan fuera del repositorio.
-- Cada ejecucion genera `evidence-manifest.json` conforme a `audit-kit/evidence-schema.json`.
+- Cada ejecucion genera `coverage.json`, `gates.json` y `evidence-manifest.json`; el manifest completo valida contra `audit-kit/evidence-schema.json`.
 
 ## Requisitos
 
@@ -224,11 +225,13 @@ Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar 
 2. Ejecuta SAST, SCA, secretos, IaC, SBOM, TLS y DAST pasivo segun parametros.
 3. Muestra progreso numerado y resumen tecnico por herramienta.
 4. Conserva artefactos crudos en `$OUTPUT_DIR/reports/`.
-5. Importa a DefectDojo si existe `--dd-token` o `DD_API_TOKEN`.
-6. Escribe `$OUTPUT_DIR/reports/summary.json` con conteos saneados.
-7. Escribe `$OUTPUT_DIR/reports/evidence-manifest.json` con artefactos, autorizaciones y cobertura por categoria.
-8. Imprime estado de importacion a DefectDojo y checklist de controles no automatizables OWASP Top 10:2025.
-9. Solo abre DefectDojo si se usa `--open-defectdojo`.
+5. Escribe `$OUTPUT_DIR/reports/summary.json` con conteos saneados.
+6. Escribe `$OUTPUT_DIR/reports/coverage.json` y `$OUTPUT_DIR/reports/gates.json` con cobertura requerida y gates OWASP.
+7. Escribe `$OUTPUT_DIR/reports/evidence-manifest.json` con artefactos, autorizaciones, cobertura y gates.
+8. Imprime resumen de ejecucion con el estado de `coverage-gates`.
+9. Importa a DefectDojo si existe `--dd-token` o `DD_API_TOKEN`.
+10. Imprime checklist de controles no automatizables OWASP Top 10:2025.
+11. Solo abre DefectDojo si se usa `--open-defectdojo`.
 
 ## Parametros
 
@@ -248,6 +251,7 @@ Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar 
 | `--skip-django-checks` | No | Omite `manage.py check --deploy` y comandos relacionados |
 | `--skip-dd-import` | No | No importa artefactos a DefectDojo |
 | `--run-trufflehog` | No | Habilita TruffleHog; puede producir evidencia con secretos |
+| `--coverage-threshold N` | No | Umbral minimo de evidencia requerida para gates OWASP (defecto: `80`) |
 | `--authorize-dast` | No | Confirma autorizacion explicita para DAST pasivo/no autenticado contra `--target` |
 | `--open-defectdojo` | No | Abre DefectDojo al finalizar si la importacion fue exitosa |
 | `--generate-only` | No | Solo crea estructura e inventario, sin scanners |

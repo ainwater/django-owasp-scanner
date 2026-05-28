@@ -9,6 +9,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+import coverage_gates
+
 
 ROOT = Path(__file__).resolve().parents[2]
 MODEL = ROOT / "audit-kit" / "owasp-top10-2025.json"
@@ -45,34 +47,9 @@ def artifact(reports: Path, relative_path: str) -> dict[str, Any]:
     return item
 
 
-def status_for(reports: Path, paths: list[str], required: bool) -> str:
-    if not paths:
-        return "missing" if required else "optional_missing"
-    checks = [(reports / path).is_file() and (reports / path).stat().st_size > 0 for path in paths]
-    present = all(checks) if required else any(checks)
-    if present:
-        return "present"
-    return "missing" if required else "optional_missing"
-
-
-def evidence(reports: Path, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    result = []
-    for item in items:
-        paths = [str(path) for path in item.get("artifacts", [])]
-        required = bool(item.get("required", False))
-        result.append(
-            {
-                "id": str(item.get("id", "")),
-                "required": required,
-                "status": status_for(reports, paths, required),
-                "artifacts": paths,
-            }
-        )
-    return result
-
-
 def artifact_groups(reports: Path) -> dict[str, list[dict[str, Any]]]:
     groups: dict[str, list[dict[str, Any]]] = {}
+    groups["root"] = [artifact(reports, name) for name in ["metadata.json", "summary.json", "coverage.json", "gates.json"]]
     for name in ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "status"]:
         directory = reports / name
         files = []
@@ -81,23 +58,6 @@ def artifact_groups(reports: Path) -> dict[str, list[dict[str, Any]]]:
                 files.append(artifact(reports, path.relative_to(reports).as_posix()))
         groups[name] = files
     return groups
-
-
-def coverage(reports: Path, model: dict[str, Any]) -> list[dict[str, Any]]:
-    rows = []
-    for category in model.get("categories", []):
-        automated = evidence(reports, category.get("automated_evidence", []))
-        manual = evidence(reports, category.get("manual_evidence", []))
-        rows.append(
-            {
-                "id": category.get("id", ""),
-                "name": category.get("name", ""),
-                "automated": automated,
-                "manual": manual,
-                "required_manual_missing": [item["id"] for item in manual if item["required"] and item["status"] == "missing"],
-            }
-        )
-    return rows
 
 
 def is_true(value: str) -> bool:
@@ -117,6 +77,9 @@ def relative_to_root(path_str: str) -> str:
 def build(reports: Path) -> dict[str, Any]:
     metadata = load_json(reports / "metadata.json")
     model = load_json(MODEL, required=True)
+    gate_threshold = coverage_gates.parse_threshold(os.getenv("AUDIT_COVERAGE_THRESHOLD", "80"))
+    coverage_result = coverage_gates.evaluate(reports, model, gate_threshold)
+    coverage_gates.write_outputs(reports, coverage_result)
     product = os.getenv("AUDIT_PRODUCT_NAME") or metadata.get("product") or "Application"
     timestamp = metadata.get("timestamp", "")
     dast = bool(metadata.get("target_url")) and is_true(os.getenv("AUDIT_DAST_AUTHORIZED", "false"))
@@ -145,7 +108,9 @@ def build(reports: Path) -> dict[str, Any]:
             "defectdojo_import": bool(os.getenv("DD_API_TOKEN")) and not is_true(os.getenv("SKIP_DD_IMPORT", "false")),
         },
         "artifacts": artifact_groups(reports),
-        "coverage": coverage(reports, model),
+        "coverage": coverage_result["categories"],
+        "coverage_summary": coverage_result["summary"],
+        "gates": coverage_result["gates"],
         "manual_signoff": [],
     }
 

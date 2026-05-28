@@ -17,6 +17,7 @@ RUN_ZAP="${AUDIT_RUN_ZAP:-true}"
 RUN_NUCLEI="${AUDIT_RUN_NUCLEI:-true}"
 RUN_DJANGO_CHECKS="${AUDIT_RUN_DJANGO_CHECKS:-auto}"
 RUN_TRUFFLEHOG="${AUDIT_RUN_TRUFFLEHOG:-false}"
+COVERAGE_THRESHOLD="${AUDIT_COVERAGE_THRESHOLD:-80}"
 DAST_AUTHORIZED="${AUDIT_DAST_AUTHORIZED:-false}"
 ACTIVE_DAST_AUTHORIZED="${AUDIT_ACTIVE_DAST_AUTHORIZED:-false}"
 DRY_RUN="${AUDIT_DRY_RUN:-false}"
@@ -55,6 +56,7 @@ Opcionales:
   --skip-django-checks         Omitir manage.py check y relacionados
   --skip-dd-import             No importar artefactos a DefectDojo al finalizar
   --run-trufflehog             Ejecutar TruffleHog (produce evidencia con secretos)
+  --coverage-threshold N       Umbral minimo de cobertura requerida (0-100, defecto: 80)
   --authorize-dast             Confirma autorización explícita para DAST pasivo/no autenticado
   --authorize-active-dast      Confirma autorización explícita para DAST activo (mutaciones)
   --open-defectdojo            Abrir DefectDojo al finalizar si la importación fue exitosa
@@ -97,6 +99,7 @@ while [[ $# -gt 0 ]]; do
         --skip-django-checks) RUN_DJANGO_CHECKS="false"; shift ;;
         --skip-dd-import) SKIP_DD_IMPORT="true"; shift ;;
         --run-trufflehog) RUN_TRUFFLEHOG="true"; shift ;;
+        --coverage-threshold) [[ $# -ge 2 ]] || die "--coverage-threshold requiere N"; COVERAGE_THRESHOLD="$2"; shift 2 ;;
         --authorize-dast) DAST_AUTHORIZED="true"; shift ;;
         --authorize-active-dast) ACTIVE_DAST_AUTHORIZED="true"; shift ;;
         --open-defectdojo) OPEN_DD="true"; shift ;;
@@ -111,6 +114,10 @@ done
 [[ -n "$PROJECT" ]] || die "--project es obligatorio"
 [[ -n "$PRODUCT" ]] || die "--product es obligatorio"
 [[ -d "$PROJECT" ]] || die "el directorio del proyecto no existe: $PROJECT"
+[[ "$COVERAGE_THRESHOLD" =~ ^[0-9]+$ ]] || die "--coverage-threshold debe ser entero entre 0 y 100"
+COVERAGE_THRESHOLD_NUM=$((10#$COVERAGE_THRESHOLD))
+(( COVERAGE_THRESHOLD_NUM >= 0 && COVERAGE_THRESHOLD_NUM <= 100 )) || die "--coverage-threshold debe estar entre 0 y 100"
+COVERAGE_THRESHOLD="$COVERAGE_THRESHOLD_NUM"
 
 PROJECT="$(cd "$PROJECT" && pwd -P)"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -153,6 +160,30 @@ write_status() {
     local lf="${STATUS_DIR}/${name}.log"
     { printf 'tool=%s\nkind=%s\nexit_code=%s\nlog=status/%s.log\ncommand=%s\n' "$name" "$kind" "$rc" "$name" "$command"; } > "$sf"
     [[ -e "$lf" ]] || printf '%s\n' "$command" > "$lf"
+}
+
+print_execution_summary() {
+    printf '\n══════════════════════════════════════\n'
+    printf 'Resumen de ejecución\n'
+    printf '────────────────────\n'
+    local sf name kind rc k v
+    for sf in "${STATUS_DIR}"/*.status; do
+        [[ -f "$sf" ]] || continue
+        name="$(basename "$sf" .status)"
+        kind=""; rc=""
+        while IFS='=' read -r k v; do
+            case "$k" in kind) kind="$v" ;; exit_code) rc="$v" ;; esac
+        done < "$sf"
+        if [[ "$kind" == "skipped" ]]; then
+            printf '  %-28s omitido\n' "$name"
+        elif [[ "$rc" == "0" ]]; then
+            printf '  %-28s ok\n' "$name"
+        elif [[ "$rc" == "1" ]]; then
+            printf '  %-28s hallazgos\n' "$name"
+        else
+            printf '  %-28s error (exit %s)\n' "$name" "$rc"
+        fi
+    done
 }
 
 progress() {
@@ -392,6 +423,7 @@ PY
     if [[ "$SKIP_DD_IMPORT" != "true" && -n "$DD_API_TOKEN" ]]; then
         plan+=("import_defectdojo (host)")
     fi
+    plan+=("coverage-gates threshold=${COVERAGE_THRESHOLD} (host)")
 
     print_host_status
 
@@ -431,6 +463,7 @@ printf 'Producto : %s\n' "$PRODUCT"
 printf 'Proyecto : %s\n' "$PROJECT"
 printf 'Target   : %s\n' "${TARGET_URL:-no especificado}"
 printf 'Salida   : %s\n' "$OUTPUT_DIR"
+printf 'Coverage threshold : %s%%\n' "$COVERAGE_THRESHOLD"
 printf 'DefectDojo: %s\n\n' "${DD_URL}"
 
 if [[ "$GENERATE_ONLY" == "true" ]]; then
@@ -565,38 +598,19 @@ exit ${rc:-0}'
     fi
 fi
 
-printf '\n══════════════════════════════════════\n'
-printf 'Resumen de ejecución\n'
-printf '────────────────────\n'
-for sf in "${STATUS_DIR}"/*.status; do
-    [[ -f "$sf" ]] || continue
-    name="$(basename "$sf" .status)"
-    kind=""; rc=""
-    while IFS='=' read -r k v; do
-        case "$k" in kind) kind="$v" ;; exit_code) rc="$v" ;; esac
-    done < "$sf"
-    if [[ "$kind" == "skipped" ]]; then
-        printf '  %-28s omitido\n' "$name"
-    elif [[ "$rc" == "0" ]]; then
-        printf '  %-28s ok\n' "$name"
-    elif [[ "$rc" == "1" ]]; then
-        printf '  %-28s hallazgos\n' "$name"
-    else
-        printf '  %-28s error (exit %s)\n' "$name" "$rc"
-    fi
-done
-
 python3 "${SCRIPT_DIR}/summarize_artifacts.py" "$REPORTS_DIR" 2> "${STATUS_DIR}/summarize-artifacts.log"
 summarize_rc=$?
 write_status "summarize-artifacts" "host" "$summarize_rc" "summarize_artifacts.py $REPORTS_DIR"
 if [[ "$summarize_rc" != "0" ]]; then
     printf '\n[ERROR] summarize-artifacts failed (exit %s)\n' "$summarize_rc" >&2
 fi
+final_rc="$summarize_rc"
 AUDIT_DAST_AUTHORIZED="$DAST_AUTHORIZED" \
 AUDIT_ACTIVE_DAST_AUTHORIZED="$ACTIVE_DAST_AUTHORIZED" \
 AUDIT_RUN_ZAP="$RUN_ZAP" \
 AUDIT_RUN_NUCLEI="$RUN_NUCLEI" \
 AUDIT_RUN_TRUFFLEHOG="$RUN_TRUFFLEHOG" \
+AUDIT_COVERAGE_THRESHOLD="$COVERAGE_THRESHOLD" \
 SKIP_DD_IMPORT="$SKIP_DD_IMPORT" \
 DD_API_TOKEN="$DD_API_TOKEN" \
 python3 "${SCRIPT_DIR}/build_evidence_manifest.py" "$REPORTS_DIR" > "${STATUS_DIR}/evidence-manifest.log" 2>&1
@@ -605,6 +619,35 @@ write_status "evidence-manifest" "host" "$manifest_rc" "build_evidence_manifest.
 if [[ "$manifest_rc" != "0" ]]; then
     printf '\n[ERROR] evidence-manifest generation failed (exit %s)\n' "$manifest_rc" >&2
 fi
+if [[ "$final_rc" == "0" && "$manifest_rc" != "0" ]]; then
+    final_rc="$manifest_rc"
+fi
+coverage_rc="2"
+coverage_status="unknown"
+coverage_percent="unknown"
+if [[ -f "${REPORTS_DIR}/gates.json" ]]; then
+    coverage_info="$(python3 - "${REPORTS_DIR}/gates.json" <<'PY'
+import json
+import sys
+data = json.loads(open(sys.argv[1]).read())
+print(f"{data.get('status', 'unknown')} {data.get('coverage_percent', 'unknown')}")
+PY
+)"
+    coverage_status="${coverage_info%% *}"
+    coverage_percent="${coverage_info#* }"
+    [[ "$coverage_status" == "pass" ]] && coverage_rc="0" || coverage_rc="1"
+fi
+write_status "coverage-gates" "host" "$coverage_rc" "coverage threshold ${COVERAGE_THRESHOLD}; status ${coverage_status}; coverage ${coverage_percent}%"
+if [[ "$coverage_rc" == "0" ]]; then
+    printf 'Coverage gates: pass (%s%%/%s%%)\n' "$coverage_percent" "$COVERAGE_THRESHOLD"
+else
+    printf '\n[ERROR] Coverage gates: %s (%s%%/%s%%)\n' "$coverage_status" "$coverage_percent" "$COVERAGE_THRESHOLD" >&2
+fi
+if [[ "$final_rc" == "0" && "$coverage_rc" != "0" ]]; then
+    final_rc="$coverage_rc"
+fi
+
+print_execution_summary
 
 printf '\n══════════════════════════════════════\n'
 printf 'Artefactos\n'
@@ -730,3 +773,4 @@ CHECKLIST
 
 printf '\nFinalizado.\n'
 printf 'Artefactos crudos: %s\n' "$REPORTS_DIR"
+exit "$final_rc"
