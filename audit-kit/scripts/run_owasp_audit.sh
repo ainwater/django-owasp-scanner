@@ -19,6 +19,7 @@ RUN_DJANGO_CHECKS="${AUDIT_RUN_DJANGO_CHECKS:-auto}"
 RUN_TRUFFLEHOG="${AUDIT_RUN_TRUFFLEHOG:-false}"
 DAST_AUTHORIZED="${AUDIT_DAST_AUTHORIZED:-false}"
 ACTIVE_DAST_AUTHORIZED="${AUDIT_ACTIVE_DAST_AUTHORIZED:-false}"
+DRY_RUN="${AUDIT_DRY_RUN:-false}"
 DD_API_TOKEN="${DD_API_TOKEN:-}"
 DD_URL="${DD_URL:-http://localhost:8080}"
 SKIP_DD_IMPORT="${SKIP_DD_IMPORT:-false}"
@@ -59,6 +60,7 @@ Opcionales:
   --open-defectdojo            Abrir DefectDojo al finalizar si la importación fue exitosa
   --generate-only              Solo estructura e inventario, sin escáneres
   --no-build                   No reconstruir imagen Docker si no existe
+  --dry-run                    Ejecuta solo verificaciones de alistamiento (sin escáneres)
   --help                       Esta ayuda
 
 Las variables de entorno duplican estos flags con prefijo AUDIT_*.
@@ -100,6 +102,7 @@ while [[ $# -gt 0 ]]; do
         --open-defectdojo) OPEN_DD="true"; shift ;;
         --generate-only) GENERATE_ONLY="true"; shift ;;
         --no-build) BUILD_IMAGE="false"; shift ;;
+        --dry-run) DRY_RUN="true"; shift ;;
         --help|-h) usage; exit 0 ;;
         *) die "argumento desconocido: $1" ;;
     esac
@@ -207,6 +210,221 @@ run_zap() {
     write_status "zap-baseline" "docker" "$rc" "zap-baseline.py -t ${TARGET_URL}"
     return 0
 }
+
+has_cmd() {
+    command -v "$1" >/dev/null 2>&1
+}
+
+print_host_status() {
+    local docker_bin="MISSING" docker_daemon="MISSING" image_status="MISSING" py_status="MISSING" requests_status="MISSING" out_status="MISSING"
+
+    if has_cmd docker; then
+        docker_bin="READY"
+        if docker info >/dev/null 2>&1; then
+            docker_daemon="READY"
+            if docker image inspect "$IMAGE" >/dev/null 2>&1; then
+                image_status="READY"
+            else
+                image_status="CONFIGURING"
+            fi
+        else
+            docker_daemon="MISSING"
+        fi
+    fi
+
+    if has_cmd python3; then
+        local py_out
+        py_out=$(python3 - <<'PY'
+import sys
+try:
+    import requests  # noqa: F401
+    req = "READY"
+except Exception:
+    req = "MISSING"
+ver = sys.version_info
+ver_ok = "READY" if (ver.major, ver.minor) >= (3, 12) else "MISSING"
+print(f"{ver_ok},{req}")
+PY
+)
+        py_status="${py_out%%,*}"
+        requests_status="${py_out##*,}"
+    fi
+
+    if [[ -w "$OUTPUT_DIR" ]]; then
+        out_status="READY"
+    elif [[ -d "$OUTPUT_DIR" ]]; then
+        out_status="CONFIGURING"
+    fi
+
+    printf 'Host/tooling:\n'
+    printf '  docker client : %s\n' "$docker_bin"
+    printf '  docker daemon : %s\n' "$docker_daemon"
+    printf '  docker image  : %s (%s)\n' "$image_status" "$IMAGE"
+    printf '  python>=3.12  : %s\n' "$py_status"
+    printf '  python requests: %s\n' "$requests_status"
+    printf '  output writable: %s\n' "$out_status"
+}
+
+run_dry_run() {
+    local rows=()
+    local plan=()
+
+    local project_exists="MISSING" manage_py="MISSING" settings_arg="MISSING" docker_ready="MISSING" image_ready="MISSING" model_ready="MISSING" schema_ready="MISSING" output_ready="MISSING"
+    [[ -d "$PROJECT" ]] && project_exists="READY"
+    [[ -f "$PROJECT/manage.py" ]] && manage_py="READY"
+    [[ -n "$SETTINGS_MODULE" ]] && settings_arg="READY"
+    if has_cmd docker && docker info >/dev/null 2>&1; then docker_ready="READY"; fi
+    if [[ "$docker_ready" == "READY" ]] && docker image inspect "$IMAGE" >/dev/null 2>&1; then image_ready="READY"; else [[ "$docker_ready" == "READY" ]] && image_ready="CONFIGURING"; fi
+
+    if has_cmd python3; then
+        python_ready=$(python3 - <<'PY'
+import sys
+v = sys.version_info
+print("READY" if (v.major, v.minor) >= (3, 12) else "MISSING")
+PY
+)
+    fi
+    [[ -f "${KIT_DIR}/owasp-top10-2025.json" ]] && model_ready="READY"
+    [[ -f "${KIT_DIR}/evidence-schema.json" ]] && schema_ready="READY"
+    [[ -w "$OUTPUT_DIR" ]] && output_ready="READY"
+
+    local dast_target="MISSING" dast_auth="MISSING"
+    [[ -n "$TARGET_URL" ]] && dast_target="READY"
+    is_true "$DAST_AUTHORIZED" && dast_auth="READY"
+
+    add_item() {
+        rows+=("$1|$2|$3")
+    }
+
+    local cov_status="READY" cov_hint="-"
+    if ! [[ "$model_ready" == READY && "$schema_ready" == READY && "$output_ready" == READY ]]; then
+        cov_status="MISSING"
+        cov_hint="need model+schema+output dir"
+    fi
+    add_item "1 Coverage Engine" "$cov_status" "$cov_hint"
+
+    local intro_status="MISSING" intro_hint="manage.py not found"
+    if [[ "$manage_py" == READY && "$settings_arg" == READY ]]; then intro_status="READY"; intro_hint="-";
+    elif [[ "$manage_py" == READY ]]; then intro_status="CONFIGURING"; intro_hint="add --settings"; fi
+    add_item "2 Django Introspection" "$intro_status" "$intro_hint"
+
+    local sast_status="MISSING" sast_hint="docker unavailable"
+    if [[ "$docker_ready" == READY ]]; then
+        if [[ "$image_ready" == READY ]]; then sast_status="READY"; sast_hint="-"
+        else sast_status="CONFIGURING"; sast_hint="build image $IMAGE"; fi
+    fi
+    add_item "3 Custom SAST Rules" "$sast_status" "$sast_hint"
+
+    add_item "4 A01 Authz Matrix" "$( [[ "$output_ready" == READY ]] && echo CONFIGURING || echo MISSING )" "add F2/authz-matrix.yml"
+
+    local dast_status="MISSING" dast_hint="set --target and --authorize-dast"
+    if [[ "$dast_target" == READY && "$dast_auth" == READY ]]; then
+        dast_status="READY"; dast_hint="target: ${TARGET_URL}"
+    elif [[ "$dast_target" == READY ]]; then
+        dast_status="CONFIGURING"; dast_hint="add --authorize-dast"
+    fi
+    add_item "5 Auth DAST + Fuzzing" "$dast_status" "$dast_hint"
+
+    local authsess_status="MISSING" authsess_hint="needs manage.py + --settings"
+    if [[ "$manage_py" == READY && "$settings_arg" == READY ]]; then authsess_status="CONFIGURING"; authsess_hint="add session/MFA tests"; fi
+    add_item "6 Auth & Session Tests" "$authsess_status" "$authsess_hint"
+
+    local headers_status="$dast_status" headers_hint="$dast_hint"
+    add_item "7 Headers & Web Policies" "$headers_status" "$headers_hint"
+
+    add_item "8 Logging & Alerting" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add logging policy review"
+
+    add_item "9 Exceptions & Resilience" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add error/timeout checks"
+
+    add_item "10 Threat Model & Abuse" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add threat-model docs"
+
+    add_item "11 Upload Integrity" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add upload validation checklist"
+
+    local supply_status="MISSING" supply_hint="docker unavailable"
+    if [[ "$docker_ready" == READY ]]; then
+        if [[ "$image_ready" == READY ]]; then supply_status="READY"; supply_hint="-"
+        else supply_status="CONFIGURING"; supply_hint="build image $IMAGE"; fi
+    fi
+    add_item "12 Supply Chain" "$supply_status" "$supply_hint"
+
+    add_item "13 Toolbox & DD Hardening" "$( [[ -f "${ROOT_DIR}/Dockerfile" ]] && echo CONFIGURING || echo MISSING )" "check Dockerfile for non-root/healthcheck"
+
+    add_item "14 SARIF/JUnit + CI" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add CI templates"
+
+    local dd_status="MISSING" dd_hint="import_defectdojo.py missing"
+    if [[ -f "${SCRIPT_DIR}/import_defectdojo.py" ]]; then
+        if [[ -n "$DD_API_TOKEN" ]]; then dd_status="READY"; dd_hint="-"
+        else dd_status="CONFIGURING"; dd_hint="set DD_API_TOKEN or --dd-token"; fi
+    fi
+    add_item "15 Normalized DD Import" "$dd_status" "$dd_hint"
+
+    add_item "16 Final Audit Package" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add final report generator"
+
+    plan+=("tool-versions (toolbox)")
+    plan+=("bandit (toolbox)")
+    plan+=("ruff-security (toolbox)")
+    plan+=("semgrep-django (toolbox)")
+    plan+=("djlint (toolbox)")
+    plan+=("detect-secrets (toolbox)")
+    plan+=("gitleaks (toolbox)")
+    plan+=("trivy (toolbox)")
+    plan+=("grype (toolbox)")
+    plan+=("syft-sbom (toolbox)")
+    plan+=("checkov (toolbox)")
+    plan+=("osv-scanner (toolbox)")
+    plan+=("pip-audit (toolbox)")
+    if [[ "$RUN_TRUFFLEHOG" == "true" ]]; then
+        plan+=("trufflehog (toolbox)")
+    fi
+    if [[ "$RUN_DJANGO_CHECKS" != "false" && -n "$SETTINGS_MODULE" ]]; then
+        plan+=("django-check-deploy (host)")
+        plan+=("django-check (host)")
+        plan+=("django-showmigrations (host)")
+        plan+=("django-show-urls (host)")
+    fi
+    if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
+        plan+=("http-headers (host)")
+        plan+=("testssl (toolbox)")
+        plan+=("sslyze (toolbox)")
+        if [[ "$RUN_NUCLEI" == "true" ]]; then plan+=("nuclei (toolbox)"); fi
+        if [[ "$RUN_ZAP" == "true" ]]; then plan+=("zap-baseline (docker)"); fi
+    fi
+    if [[ "$SKIP_DD_IMPORT" != "true" && -n "$DD_API_TOKEN" ]]; then
+        plan+=("import_defectdojo (host)")
+    fi
+
+    print_host_status
+
+    printf '\nReadiness (ready/configuring/missing)\n'
+    printf '  %-26s %-12s %s\n' "Item" "Status" "Hint"
+    printf '  %s\n' "---------------------------------------------------------------"
+    local row
+    for row in "${rows[@]}"; do
+        IFS='|' read -r item status hint <<<"$row"
+        [[ -z "$hint" ]] && hint="-"
+        printf '  %-26s %-12s %s\n' "$item" "$status" "$hint"
+    done
+
+    printf '\nPlanned tool sequence (would run on full run):\n'
+    if [[ ${#plan[@]} -eq 0 ]]; then
+        printf '  (no tools scheduled under current flags)\n'
+    else
+        local p
+        for p in "${plan[@]}"; do
+            printf '  - %s\n' "$p"
+        done
+    fi
+
+    printf '\nUsage examples:\n'
+    printf '  ./audit-kit/scripts/run_owasp_audit.sh --project /abs/path --product "Name" --dry-run\n'
+    printf '  ./audit-kit/scripts/run_owasp_audit.sh --project /abs/path --product "Name" --settings config.settings --django-command-prefix "poetry run python" --dry-run\n'
+    printf '  ./audit-kit/scripts/run_owasp_audit.sh --project /abs/path --product "Name" --target https://staging.example.com --authorize-dast --dry-run\n'
+    exit 0
+}
+
+if is_true "$DRY_RUN"; then
+    run_dry_run
+fi
 
 printf '\n═══ OWASP Django Audit Kit ═══\n'
 printf 'Producto : %s\n' "$PRODUCT"
