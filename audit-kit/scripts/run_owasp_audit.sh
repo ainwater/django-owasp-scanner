@@ -115,7 +115,9 @@ done
 [[ -n "$PRODUCT" ]] || die "--product es obligatorio"
 [[ -d "$PROJECT" ]] || die "el directorio del proyecto no existe: $PROJECT"
 [[ "$COVERAGE_THRESHOLD" =~ ^[0-9]+$ ]] || die "--coverage-threshold debe ser entero entre 0 y 100"
-(( COVERAGE_THRESHOLD >= 0 && COVERAGE_THRESHOLD <= 100 )) || die "--coverage-threshold debe estar entre 0 y 100"
+COVERAGE_THRESHOLD_NUM=$((10#$COVERAGE_THRESHOLD))
+(( COVERAGE_THRESHOLD_NUM >= 0 && COVERAGE_THRESHOLD_NUM <= 100 )) || die "--coverage-threshold debe estar entre 0 y 100"
+COVERAGE_THRESHOLD="$COVERAGE_THRESHOLD_NUM"
 
 PROJECT="$(cd "$PROJECT" && pwd -P)"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -461,7 +463,7 @@ printf 'Producto : %s\n' "$PRODUCT"
 printf 'Proyecto : %s\n' "$PROJECT"
 printf 'Target   : %s\n' "${TARGET_URL:-no especificado}"
 printf 'Salida   : %s\n' "$OUTPUT_DIR"
-printf 'Coverage : %s%%\n' "$COVERAGE_THRESHOLD"
+printf 'Coverage threshold : %s%%\n' "$COVERAGE_THRESHOLD"
 printf 'DefectDojo: %s\n\n' "${DD_URL}"
 
 if [[ "$GENERATE_ONLY" == "true" ]]; then
