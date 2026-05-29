@@ -22,7 +22,7 @@ jobs:
         run: python -m unittest discover -s tests -p "test_*.py"
 
       - name: Compile Python scripts
-        run: python -m py_compile audit-kit/scripts/coverage_gates.py audit-kit/scripts/build_evidence_manifest.py audit-kit/scripts/summarize_artifacts.py audit-kit/scripts/import_defectdojo.py
+        run: python -m py_compile audit-kit/scripts/coverage_gates.py audit-kit/scripts/django_introspection.py audit-kit/scripts/build_evidence_manifest.py audit-kit/scripts/summarize_artifacts.py audit-kit/scripts/import_defectdojo.py
 
       - name: Check runner syntax
         run: bash -n audit-kit/scripts/run_owasp_audit.sh

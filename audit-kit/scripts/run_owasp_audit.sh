@@ -30,6 +30,7 @@ GENERATE_ONLY="false"
 
 TOOL_N=0
 TOOL_TOTAL=0
+django_rc=0
 
 usage() {
     cat <<'USAGE'
@@ -44,7 +45,7 @@ Obligatorios:
 
 Opcionales:
   --settings MODULE            DJANGO_SETTINGS_MODULE para manage.py check --deploy
-  --django-command-prefix CMD  Prefijo antes de manage.py (defecto: poetry run python)
+  --django-command-prefix CMD  Prefijo seguro antes de manage.py, sin operadores de shell
   --target URL                 URL staging/prod autorizada para DAST pasivo
   --output DIR                 Directorio de salida (defecto: audit-kit/runs/<slug>-<timestamp>)
   --image NAME                 Imagen Docker toolbox (defecto: owasp-audit:latest)
@@ -53,7 +54,7 @@ Opcionales:
   --skip-dast                  Omitir verificaciones contra el target
   --skip-zap                   Omitir ZAP baseline
   --skip-nuclei                Omitir Nuclei
-  --skip-django-checks         Omitir manage.py check y relacionados
+  --skip-django-checks         Omitir introspección Django y manage.py checks
   --skip-dd-import             No importar artefactos a DefectDojo al finalizar
   --run-trufflehog             Ejecutar TruffleHog (produce evidencia con secretos)
   --coverage-threshold N       Umbral minimo de cobertura requerida (0-100, defecto: 80)
@@ -118,6 +119,9 @@ done
 COVERAGE_THRESHOLD_NUM=$((10#$COVERAGE_THRESHOLD))
 (( COVERAGE_THRESHOLD_NUM >= 0 && COVERAGE_THRESHOLD_NUM <= 100 )) || die "--coverage-threshold debe estar entre 0 y 100"
 COVERAGE_THRESHOLD="$COVERAGE_THRESHOLD_NUM"
+case "$DJANGO_PREFIX" in
+    *[!A-Za-z0-9_./\ -]*) die "--django-command-prefix contiene caracteres no permitidos" ;;
+esac
 
 PROJECT="$(cd "$PROJECT" && pwd -P)"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -202,6 +206,10 @@ progress_done() {
     fi
 }
 
+should_run_django() {
+    [[ "$RUN_DJANGO_CHECKS" != "false" && -n "$SETTINGS_MODULE" ]]
+}
+
 run_toolbox() {
     local name="$1" command="$2" rc
     progress "$name"
@@ -225,7 +233,7 @@ run_host() {
     rc=$?
     progress_done "$rc"
     write_status "$name" "host" "$rc" "$command"
-    return 0
+    return "$rc"
 }
 
 run_zap() {
@@ -335,7 +343,8 @@ PY
     add_item "1 Coverage Engine" "$cov_status" "$cov_hint"
 
     local intro_status="MISSING" intro_hint="manage.py not found"
-    if [[ "$manage_py" == READY && "$settings_arg" == READY ]]; then intro_status="READY"; intro_hint="-";
+    if [[ "$RUN_DJANGO_CHECKS" == "false" ]]; then intro_status="SKIPPED"; intro_hint="--skip-django-checks";
+    elif [[ "$manage_py" == READY && "$settings_arg" == READY ]]; then intro_status="READY"; intro_hint="-";
     elif [[ "$manage_py" == READY ]]; then intro_status="CONFIGURING"; intro_hint="add --settings"; fi
     add_item "2 Django Introspection" "$intro_status" "$intro_hint"
 
@@ -407,7 +416,8 @@ PY
     if [[ "$RUN_TRUFFLEHOG" == "true" ]]; then
         plan+=("trufflehog (toolbox)")
     fi
-    if [[ "$RUN_DJANGO_CHECKS" != "false" && -n "$SETTINGS_MODULE" ]]; then
+    if should_run_django; then
+        plan+=("django-introspection (host)")
         plan+=("django-check-deploy (host)")
         plan+=("django-check (host)")
         plan+=("django-showmigrations (host)")
@@ -469,10 +479,11 @@ printf 'DefectDojo: %s\n\n' "${DD_URL}"
 if [[ "$GENERATE_ONLY" == "true" ]]; then
     printf 'Modo generate-only. No se ejecutarán escáneres.\n'
     write_status "scanners" "skipped" "0" "generate-only"
+    if should_run_django; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
 else
     TOOL_TOTAL=13
     if [[ "$RUN_TRUFFLEHOG" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
-    if [[ "$RUN_DJANGO_CHECKS" != "false" && -n "$SETTINGS_MODULE" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 4)); fi
+    if should_run_django; then TOOL_TOTAL=$((TOOL_TOTAL + 5)); fi
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
         TOOL_TOTAL=$((TOOL_TOTAL + 3))
         if [[ "$RUN_ZAP" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
@@ -521,13 +532,13 @@ testssl --version || true
         write_status "trufflehog" "skipped" "0" "omitido; use --run-trufflehog"
     fi
 
-    if [[ "$RUN_DJANGO_CHECKS" != "false" && -n "$SETTINGS_MODULE" ]]; then
+    if should_run_django; then
         Q_PROJECT="$(printf '%q' "$PROJECT")"
         Q_SETTINGS="$(printf '%q' "$SETTINGS_MODULE")"
-        run_host "django-check-deploy"   "cd ${Q_PROJECT} && export DJANGO_SETTINGS_MODULE=${Q_SETTINGS} && ${DJANGO_PREFIX} manage.py check --deploy"
-        run_host "django-check"          "cd ${Q_PROJECT} && export DJANGO_SETTINGS_MODULE=${Q_SETTINGS} && ${DJANGO_PREFIX} manage.py check"
-        run_host "django-showmigrations" "cd ${Q_PROJECT} && export DJANGO_SETTINGS_MODULE=${Q_SETTINGS} && ${DJANGO_PREFIX} manage.py showmigrations --plan"
-        run_host "django-show-urls"      "cd ${Q_PROJECT} && export DJANGO_SETTINGS_MODULE=${Q_SETTINGS} && ${DJANGO_PREFIX} manage.py show_urls"
+        run_host "django-check-deploy"   "cd ${Q_PROJECT} && export DJANGO_SETTINGS_MODULE=${Q_SETTINGS} && ${DJANGO_PREFIX} manage.py check --deploy"; rc=$?; [[ "$django_rc" == "0" && "$rc" != "0" ]] && django_rc="$rc"
+        run_host "django-check"          "cd ${Q_PROJECT} && export DJANGO_SETTINGS_MODULE=${Q_SETTINGS} && ${DJANGO_PREFIX} manage.py check"; rc=$?; [[ "$django_rc" == "0" && "$rc" != "0" ]] && django_rc="$rc"
+        run_host "django-showmigrations" "cd ${Q_PROJECT} && export DJANGO_SETTINGS_MODULE=${Q_SETTINGS} && ${DJANGO_PREFIX} manage.py showmigrations --plan"; rc=$?; [[ "$django_rc" == "0" && "$rc" != "0" ]] && django_rc="$rc"
+        run_host "django-show-urls"      "cd ${Q_PROJECT} && export DJANGO_SETTINGS_MODULE=${Q_SETTINGS} && ${DJANGO_PREFIX} manage.py show_urls"; rc=$?; [[ "$django_rc" == "0" && "$rc" != "0" ]] && django_rc="$rc"
     elif [[ "$RUN_DJANGO_CHECKS" != "false" ]]; then
         printf '  django-checks: omitido (no se proporcionó --settings)\n'
         write_status "django-checks" "skipped" "0" "omitido; no DJANGO_SETTINGS_MODULE"
@@ -598,13 +609,32 @@ exit ${rc:-0}'
     fi
 fi
 
+if should_run_django; then
+    Q_PROJECT="$(printf '%q' "$PROJECT")"
+    Q_SETTINGS="$(printf '%q' "$SETTINGS_MODULE")"
+    Q_REPORTS="$(printf '%q' "$REPORTS_DIR")"
+    Q_INTROSPECT="$(printf '%q' "${SCRIPT_DIR}/django_introspection.py")"
+    run_host "django-introspection" "cd ${Q_PROJECT} && ${DJANGO_PREFIX} ${Q_INTROSPECT} ${Q_PROJECT} ${Q_SETTINGS} ${Q_REPORTS}"
+    introspection_rc="$?"
+else
+    printf '  django-introspection: omitido (sin --settings o --skip-django-checks)\n'
+    write_status "django-introspection" "skipped" "0" "omitido; sin --settings o --skip-django-checks"
+    introspection_rc="0"
+fi
+
 python3 "${SCRIPT_DIR}/summarize_artifacts.py" "$REPORTS_DIR" 2> "${STATUS_DIR}/summarize-artifacts.log"
 summarize_rc=$?
 write_status "summarize-artifacts" "host" "$summarize_rc" "summarize_artifacts.py $REPORTS_DIR"
 if [[ "$summarize_rc" != "0" ]]; then
     printf '\n[ERROR] summarize-artifacts failed (exit %s)\n' "$summarize_rc" >&2
 fi
-final_rc="$summarize_rc"
+final_rc="$introspection_rc"
+if [[ "$final_rc" == "0" && "$django_rc" != "0" ]]; then
+    final_rc="$django_rc"
+fi
+if [[ "$final_rc" == "0" && "$summarize_rc" != "0" ]]; then
+    final_rc="$summarize_rc"
+fi
 AUDIT_DAST_AUTHORIZED="$DAST_AUTHORIZED" \
 AUDIT_ACTIVE_DAST_AUTHORIZED="$ACTIVE_DAST_AUTHORIZED" \
 AUDIT_RUN_ZAP="$RUN_ZAP" \

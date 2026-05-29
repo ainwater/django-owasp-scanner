@@ -57,7 +57,7 @@ EOF
 printf 'DD_API_TOKEN=%s\n' "$DD_API_TOKEN" >> /ruta/privada/audit.env
 ```
 
-Si el proyecto usa virtualenv/Poetry, se ajustar `AUDIT_DJANGO_COMMAND_PREFIX`, por ejemplo `. .venv/bin/activate && poetry run python`.
+Si el proyecto usa virtualenv/Poetry, usar un prefijo sin operadores de shell, por ejemplo `poetry run python` o `.venv/bin/python`. Para activar un entorno virtual, hacerlo antes de ejecutar el runner.
 
 ### 4. Ejecutar toolkit e importar a DefectDojo
 
@@ -99,6 +99,7 @@ owasp/
 |   |-- scripts/
 |   |   |-- run_owasp_audit.sh         # Runner parametrizable
 |   |   |-- coverage_gates.py           # Motor de cobertura y gates OWASP
+|   |   |-- django_introspection.py      # Inventario Django/DRF y URLconf
 |   |   |-- build_evidence_manifest.py  # Generador de manifiesto de evidencia
 |   |   |-- import_defectdojo.py       # Importador generico a DefectDojo via API token
 |   |   `-- summarize_artifacts.py     # Resumen tecnico saneado de artefactos
@@ -182,7 +183,7 @@ Crear un archivo privado fuera de git, por ejemplo `/ruta/privada/audit.env`:
 AUDIT_PROJECT="/ruta/absoluta/al/repositorio-django"
 AUDIT_PRODUCT_NAME="Nombre del Producto"
 AUDIT_DJANGO_SETTINGS_MODULE="config.settings"
-AUDIT_DJANGO_COMMAND_PREFIX=". .venv/bin/activate && poetry run python"
+AUDIT_DJANGO_COMMAND_PREFIX="poetry run python"
 AUDIT_TARGET_URL="https://staging.ejemplo.com"
 AUDIT_DAST_AUTHORIZED=false
 DD_URL="http://localhost:8080"
@@ -240,7 +241,7 @@ Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar 
 | `--project PATH` | Si | Ruta absoluta o relativa al proyecto Django |
 | `--product NAME` | Si | Nombre del producto para trazabilidad |
 | `--settings MODULE` | No | Modulo de settings Django para `manage.py check --deploy` |
-| `--django-command-prefix CMD` | No | Prefijo antes de `manage.py` (defecto: `poetry run python`) |
+| `--django-command-prefix CMD` | No | Prefijo seguro antes de `manage.py`, sin operadores de shell; ejemplos: `poetry run python`, `.venv/bin/python` (defecto: `poetry run python`) |
 | `--target URL` | No | URL autorizada para DAST pasivo |
 | `--output DIR` | No | Directorio de salida (defecto: `audit-kit/runs/<slug>-<timestamp>`) |
 | `--dd-token TOKEN` | No | API token de DefectDojo para importacion automatica |
@@ -248,7 +249,7 @@ Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar 
 | `--skip-dast` | No | Omite verificaciones contra el target |
 | `--skip-zap` | No | Omite ZAP baseline |
 | `--skip-nuclei` | No | Omite Nuclei |
-| `--skip-django-checks` | No | Omite `manage.py check --deploy` y comandos relacionados |
+| `--skip-django-checks` | No | Omite introspeccion Django y `manage.py check --deploy`/comandos relacionados |
 | `--skip-dd-import` | No | No importa artefactos a DefectDojo |
 | `--run-trufflehog` | No | Habilita TruffleHog; puede producir evidencia con secretos |
 | `--coverage-threshold N` | No | Umbral minimo de evidencia requerida para gates OWASP (defecto: `80`) |
@@ -269,7 +270,7 @@ Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar 
 | Secretos | Gitleaks, detect-secrets, TruffleHog opt-in |
 | DAST | ZAP baseline, Nuclei |
 | TLS | testssl.sh, SSLyze |
-| Django nativo | `manage.py check --deploy`, `showmigrations`, `show_urls` |
+| Django nativo | Introspeccion settings/URLs, `manage.py check --deploy`, `showmigrations`, `show_urls` |
 
 ## DefectDojo
 
