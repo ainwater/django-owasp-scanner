@@ -151,7 +151,7 @@ p = sys.argv[1:]
 print(json.dumps({"project":p[0],"product":p[1],"settings_module":p[2],"target_url":p[3],"output_dir":p[4],"timestamp":p[5]},indent=2))
 PY
 
-if [[ "$GENERATE_ONLY" == "false" && "$BUILD_IMAGE" == "true" ]]; then
+if [[ "$DRY_RUN" != "true" && "$GENERATE_ONLY" == "false" && "$BUILD_IMAGE" == "true" ]]; then
     if ! docker image inspect "$IMAGE" >/dev/null 2>&1; then
         printf '\n[build] Compilando toolbox %s...\n' "$IMAGE"
         docker build -t "$IMAGE" "$ROOT_DIR" || die "falló la compilación de la imagen Docker"

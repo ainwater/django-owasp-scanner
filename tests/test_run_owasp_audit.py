@@ -39,6 +39,19 @@ def make_fake_docker(bin_dir: Path) -> None:
     (bin_dir / "docker").chmod(0o755)
 
 
+def make_fake_docker_without_image(bin_dir: Path) -> None:
+    write(
+        bin_dir / "docker",
+        "#!/usr/bin/env bash\n"
+        "if [[ \"$1\" == \"info\" ]]; then exit 0; fi\n"
+        "if [[ \"$1 $2 $3\" == \"image inspect owasp-audit:latest\" ]]; then exit 1; fi\n"
+        "if [[ \"$1\" == \"build\" ]]; then exit 23; fi\n"
+        "if [[ \"$1\" == \"run\" ]]; then exit 0; fi\n"
+        "exit 0\n",
+    )
+    (bin_dir / "docker").chmod(0o755)
+
+
 class RunOwaspAuditTest(unittest.TestCase):
     def test_generate_only_returns_one_when_coverage_gate_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -423,6 +436,37 @@ class RunOwaspAuditTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertRegex(result.stdout, r"2 Django Introspection\s+SKIPPED")
         self.assertNotIn("django-introspection (host)", result.stdout)
+
+    def test_dry_run_does_not_build_missing_toolbox_image(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = root / "project"
+            fake_bin = root / "bin"
+            make_django_project(project)
+            make_fake_docker_without_image(fake_bin)
+            env = {**os.environ, "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"}
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(project),
+                    "--product",
+                    "Test",
+                    "--settings",
+                    "config.settings",
+                    "--output",
+                    str(root / "out"),
+                    "--dry-run",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=env,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("docker image  : CONFIGURING", result.stdout)
 
 
 if __name__ == "__main__":
