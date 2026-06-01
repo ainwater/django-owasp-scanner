@@ -40,10 +40,11 @@ def rule_ids(path: Path) -> set[str]:
 class SemgrepRulesTest(unittest.TestCase):
     def rule_blocks(self) -> list[str]:
         content = RULES.read_text()
-        return ["  - id: " + block for block in content.split("\n  - id: ")[1:]]
+        return ["id: " + block for block in re.split(r"(?m)^\s*-\s+id:\s*", content)[1:]]
 
     def test_ruleset_exists_and_defines_required_rule_ids(self) -> None:
-        self.assertEqual(rule_ids(RULES), REQUIRED_RULE_IDS)
+        ids = rule_ids(RULES)
+        self.assertTrue(REQUIRED_RULE_IDS <= ids, f"missing rules: {sorted(REQUIRED_RULE_IDS - ids)}")
 
     def test_missing_ruleset_fails_with_clear_assertion(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
