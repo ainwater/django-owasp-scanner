@@ -13,6 +13,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 RULES = ROOT / "audit-kit" / "semgrep" / "django-drf.yml"
 IMAGE = os.environ.get("AUDIT_DOCKER_IMAGE", "owasp-audit:latest")
+REQUIRED_RULE_IDS = {
+    "django.auth-weak-password-hasher",
+    "django.csrf-exempt",
+    "django.mark-safe",
+    "django.raw-sql",
+    "drf.allow-any",
+    "python.pickle-load",
+    "python.yaml-load-unsafe",
+}
 
 
 def toolbox_available() -> bool:
@@ -21,23 +30,26 @@ def toolbox_available() -> bool:
     return subprocess.run(["docker", "image", "inspect", IMAGE], capture_output=True, text=True, check=False).returncode == 0
 
 
+def rule_ids(path: Path) -> set[str]:
+    if not path.is_file():
+        raise AssertionError(f"ruleset missing: {path}")
+    content = path.read_text()
+    return set(re.findall(r"(?m)^\s*-?\s*id:\s*([a-z0-9_.-]+)\s*$", content))
+
+
 class SemgrepRulesTest(unittest.TestCase):
     def rule_blocks(self) -> list[str]:
         content = RULES.read_text()
         return ["  - id: " + block for block in content.split("\n  - id: ")[1:]]
 
     def test_ruleset_exists_and_defines_required_rule_ids(self) -> None:
-        content = RULES.read_text()
-        ids = set(re.findall(r"(?m)^\s*-?\s*id:\s*([a-z0-9_.-]+)\s*$", content))
+        self.assertEqual(rule_ids(RULES), REQUIRED_RULE_IDS)
 
-        self.assertTrue(RULES.is_file())
-        self.assertIn("django.csrf-exempt", ids)
-        self.assertIn("django.raw-sql", ids)
-        self.assertIn("django.mark-safe", ids)
-        self.assertIn("python.pickle-load", ids)
-        self.assertIn("python.yaml-load-unsafe", ids)
-        self.assertIn("drf.allow-any", ids)
-        self.assertIn("django.auth-weak-password-hasher", ids)
+    def test_missing_ruleset_fails_with_clear_assertion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            missing = Path(tmp) / "missing.yml"
+            with self.assertRaisesRegex(AssertionError, "ruleset missing"):
+                rule_ids(missing)
 
     def test_ruleset_uses_owasp_metadata(self) -> None:
         for block in self.rule_blocks():
