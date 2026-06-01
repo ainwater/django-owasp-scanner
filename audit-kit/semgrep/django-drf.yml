@@ -83,6 +83,10 @@ rules:
       - pattern-not: yaml.load(..., Loader=yaml.CSafeLoader, ...)
       - pattern-not: yaml.load(..., Loader=SafeLoader, ...)
       - pattern-not: yaml.load(..., Loader=CSafeLoader, ...)
+      - pattern-not: yaml.load(..., yaml.SafeLoader, ...)
+      - pattern-not: yaml.load(..., yaml.CSafeLoader, ...)
+      - pattern-not: yaml.load(..., SafeLoader, ...)
+      - pattern-not: yaml.load(..., CSafeLoader, ...)
 
   - id: drf.allow-any
     message: Review DRF AllowAny usage; public endpoints should be explicit and documented.

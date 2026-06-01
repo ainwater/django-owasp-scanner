@@ -109,6 +109,8 @@ class SemgrepRulesTest(unittest.TestCase):
                 "    yaml.load(value, Loader=yaml.SafeLoader)\n\n"
                 "    yaml.load(value, Loader=yaml.CSafeLoader)\n"
                 "    yaml.load(value, Loader=CSafeLoader)\n\n"
+                "    yaml.load(value, yaml.SafeLoader)\n"
+                "    yaml.load(value, SafeLoader)\n\n"
                 "@permission_classes([permissions.AllowAny])\n"
                 "def public_view(request):\n"
                 "    return None\n\n"
@@ -134,6 +136,8 @@ class SemgrepRulesTest(unittest.TestCase):
                 "    yaml.safe_load(value)\n"
                 "    yaml.load(value, Loader=yaml.SafeLoader)\n"
                 "    yaml.load(value, Loader=yaml.CSafeLoader)\n\n"
+                "    yaml.load(value, yaml.SafeLoader)\n"
+                "    yaml.load(value, SafeLoader)\n\n"
                 "permission_classes = [IsAuthenticated]\n"
                 "PASSWORD_HASHERS = ['django.contrib.auth.hashers.PBKDF2PasswordHasher']\n"
             )
@@ -178,6 +182,8 @@ class SemgrepRulesTest(unittest.TestCase):
         self.assertNotIn(line_for["yaml.load(value, Loader=yaml.SafeLoader)"], yaml_lines)
         self.assertNotIn(line_for["yaml.load(value, Loader=yaml.CSafeLoader)"], yaml_lines)
         self.assertNotIn(line_for["yaml.load(value, Loader=CSafeLoader)"], yaml_lines)
+        self.assertNotIn(line_for["yaml.load(value, yaml.SafeLoader)"], yaml_lines)
+        self.assertNotIn(line_for["yaml.load(value, SafeLoader)"], yaml_lines)
         allowany_lines = {f.get("start", {}).get("line") for f in findings if str(f.get("check_id", "")).endswith("drf.allow-any")}
         self.assertIn(line_for["permission_classes = [AllowAny, IsAuthenticated]"], allowany_lines)
         self.assertIn(line_for["permission_classes = [permissions.AllowAny, permissions.IsAuthenticated]"], allowany_lines)
