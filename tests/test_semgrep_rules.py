@@ -50,6 +50,13 @@ def semgrep_command(src: Path, vulnerable: Path, safe: Path) -> list[str]:
     raise unittest.SkipTest("Semgrep not available locally and Docker image not available")
 
 
+def semgrep_rule_id(check_id: str) -> str:
+    for prefix in ("audit-kit.semgrep.", "rules."):
+        if check_id.startswith(prefix):
+            return check_id.removeprefix(prefix)
+    return check_id
+
+
 def rule_ids(path: Path) -> set[str]:
     if not path.is_file():
         raise AssertionError(f"ruleset missing: {path}")
@@ -104,6 +111,9 @@ class SemgrepRulesTest(unittest.TestCase):
             command,
             ["semgrep", "--config", str(RULES), "--json", "/src/vulnerable.py", "/src/safe.py"],
         )
+
+    def test_semgrep_rule_id_accepts_local_config_prefix(self) -> None:
+        self.assertEqual(semgrep_rule_id("audit-kit.semgrep.django.csrf-exempt"), "django.csrf-exempt")
 
     def test_toolbox_semgrep_matches_representative_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -182,7 +192,7 @@ class SemgrepRulesTest(unittest.TestCase):
         self.assertIn(result.returncode, {0, 1}, result.stderr)
         payload = json.loads(result.stdout)
         findings = payload.get("results", [])
-        ids = {str(finding.get("check_id", "")).removeprefix("rules.") for finding in findings}
+        ids = {semgrep_rule_id(str(finding.get("check_id", ""))) for finding in findings}
         safe_findings = [finding for finding in findings if str(finding.get("path", "")).endswith("safe.py")]
 
         self.assertIn("django.csrf-exempt", ids)
@@ -192,15 +202,15 @@ class SemgrepRulesTest(unittest.TestCase):
         self.assertIn("python.yaml-load-unsafe", ids)
         self.assertIn("drf.allow-any", ids)
         self.assertIn("django.auth-weak-password-hasher", ids)
-        self.assertGreaterEqual(sum(1 for f in findings if str(f.get("check_id", "")).endswith("django.csrf-exempt")), 2)
-        self.assertIn(line_for["cursor.execute('select * from users')"], {f.get("start", {}).get("line") for f in findings if str(f.get("check_id", "")).endswith("django.raw-sql")})
-        yaml_lines = {f.get("start", {}).get("line") for f in findings if str(f.get("check_id", "")).endswith("python.yaml-load-unsafe")}
+        self.assertGreaterEqual(sum(1 for f in findings if semgrep_rule_id(str(f.get("check_id", ""))) == "django.csrf-exempt"), 2)
+        self.assertIn(line_for["cursor.execute('select * from users')"], {f.get("start", {}).get("line") for f in findings if semgrep_rule_id(str(f.get("check_id", ""))) == "django.raw-sql"})
+        yaml_lines = {f.get("start", {}).get("line") for f in findings if semgrep_rule_id(str(f.get("check_id", ""))) == "python.yaml-load-unsafe"}
         self.assertNotIn(line_for["yaml.load(value, Loader=yaml.SafeLoader)"], yaml_lines)
         self.assertNotIn(line_for["yaml.load(value, Loader=yaml.CSafeLoader)"], yaml_lines)
         self.assertNotIn(line_for["yaml.load(value, Loader=CSafeLoader)"], yaml_lines)
         self.assertNotIn(line_for["yaml.load(value, yaml.SafeLoader)"], yaml_lines)
         self.assertNotIn(line_for["yaml.load(value, SafeLoader)"], yaml_lines)
-        allowany_lines = {f.get("start", {}).get("line") for f in findings if str(f.get("check_id", "")).endswith("drf.allow-any")}
+        allowany_lines = {f.get("start", {}).get("line") for f in findings if semgrep_rule_id(str(f.get("check_id", ""))) == "drf.allow-any"}
         self.assertIn(line_for["permission_classes = [AllowAny, IsAuthenticated]"], allowany_lines)
         self.assertIn(line_for["permission_classes = [permissions.AllowAny, permissions.IsAuthenticated]"], allowany_lines)
         self.assertIn(line_for["@permission_classes([AllowAny, IsAuthenticated])"], allowany_lines)
