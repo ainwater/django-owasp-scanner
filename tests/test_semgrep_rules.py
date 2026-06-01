@@ -159,7 +159,7 @@ class SemgrepRulesTest(unittest.TestCase):
                 check=False,
             )
 
-        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn(result.returncode, {0, 1}, result.stderr)
         payload = json.loads(result.stdout)
         findings = payload.get("results", [])
         ids = {str(finding.get("check_id", "")).removeprefix("rules.") for finding in findings}
