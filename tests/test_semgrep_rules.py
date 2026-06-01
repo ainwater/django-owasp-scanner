@@ -7,6 +7,7 @@ import shutil
 import subprocess
 import tempfile
 import unittest
+from unittest import mock
 from pathlib import Path
 
 
@@ -28,6 +29,25 @@ def toolbox_available() -> bool:
     if shutil.which("docker") is None:
         return False
     return subprocess.run(["docker", "image", "inspect", IMAGE], capture_output=True, text=True, check=False).returncode == 0
+
+
+def semgrep_command(src: Path, vulnerable: Path, safe: Path) -> list[str]:
+    if shutil.which("semgrep"):
+        return ["semgrep", "--config", str(RULES), "--json", str(vulnerable), str(safe)]
+    if toolbox_available():
+        return [
+            "docker",
+            "run",
+            "--rm",
+            "-v",
+            f"{RULES.parent}:/rules:ro",
+            "-v",
+            f"{src}:/src:ro",
+            IMAGE,
+            "-lc",
+            "semgrep --config /rules/django-drf.yml --json /src/vulnerable.py /src/safe.py",
+        ]
+    raise unittest.SkipTest("Semgrep not available locally and Docker image not available")
 
 
 def rule_ids(path: Path) -> set[str]:
@@ -76,10 +96,16 @@ class SemgrepRulesTest(unittest.TestCase):
         self.assertNotIn("$PICKLE.load", content)
         self.assertNotIn("$PICKLE.loads", content)
 
-    def test_toolbox_semgrep_matches_representative_fixtures(self) -> None:
-        if not toolbox_available():
-            self.skipTest(f"Docker image not available: {IMAGE}")
+    def test_semgrep_command_prefers_local_semgrep(self) -> None:
+        with mock.patch("shutil.which", return_value="/usr/bin/semgrep"):
+            command = semgrep_command(Path("/src"), Path("/src/vulnerable.py"), Path("/src/safe.py"))
 
+        self.assertEqual(
+            command,
+            ["semgrep", "--config", str(RULES), "--json", "/src/vulnerable.py", "/src/safe.py"],
+        )
+
+    def test_toolbox_semgrep_matches_representative_fixtures(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             vulnerable = Path(tmp) / "vulnerable.py"
             safe = Path(tmp) / "safe.py"
@@ -144,20 +170,10 @@ class SemgrepRulesTest(unittest.TestCase):
             vulnerable.write_text(vulnerable_source)
             safe.write_text(safe_source)
             line_for = {line.strip(): number for number, line in enumerate(vulnerable_source.splitlines(), 1)}
+            command = semgrep_command(Path(tmp), vulnerable, safe)
 
             result = subprocess.run(
-                [
-                    "docker",
-                    "run",
-                    "--rm",
-                    "-v",
-                    f"{RULES.parent}:/rules:ro",
-                    "-v",
-                    f"{tmp}:/src:ro",
-                    IMAGE,
-                    "-lc",
-                    "semgrep --config /rules/django-drf.yml --json /src/vulnerable.py /src/safe.py",
-                ],
+                command,
                 capture_output=True,
                 text=True,
                 check=False,
