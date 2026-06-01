@@ -5,6 +5,7 @@ import tempfile
 import unittest
 import os
 import shlex
+import json
 from pathlib import Path
 
 
@@ -210,6 +211,98 @@ class RunOwaspAuditTest(unittest.TestCase):
         self.assertTrue(settings_exists)
         self.assertTrue(urls_exists)
         self.assertNotIn("[1/0]", result.stdout)
+
+    def test_generate_only_with_authz_matrix_writes_a01_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            matrix = root / "authz.yml"
+            output = root / "out"
+            write(
+                matrix,
+                "version: 1\n"
+                "checks:\n"
+                "  - id: owner-detail\n"
+                "    endpoint: GET /api/items/{id}/\n"
+                "    role: owner\n"
+                "    tenant: alpha\n"
+                "    object: item:own\n"
+                "    expected: allow\n"
+                "    observed: allow\n",
+            )
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--authz-matrix",
+                    str(matrix),
+                    "--output",
+                    str(output),
+                    "--generate-only",
+                    "--skip-dd-import",
+                    "--coverage-threshold",
+                    "0",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            copied = output / "reports" / "F2" / "authz-matrix.yml"
+            results = output / "reports" / "F2" / "authz-results.json"
+            copied_exists = copied.is_file()
+            payload = json.loads(results.read_text()) if results.exists() else {}
+
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue(copied_exists)
+        self.assertEqual(payload["status"], "pass")
+        self.assertNotIn("[1/0]", result.stdout)
+
+    def test_authz_matrix_failure_makes_runner_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            matrix = root / "authz.yml"
+            output = root / "out"
+            write(
+                matrix,
+                "version: 1\n"
+                "checks:\n"
+                "  - id: cross-tenant-detail\n"
+                "    endpoint: GET /api/items/{id}/\n"
+                "    role: other_user\n"
+                "    tenant: beta\n"
+                "    object: item:own\n"
+                "    expected: deny\n"
+                "    observed: allow\n",
+            )
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--authz-matrix",
+                    str(matrix),
+                    "--output",
+                    str(output),
+                    "--generate-only",
+                    "--skip-dd-import",
+                    "--coverage-threshold",
+                    "0",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            payload = json.loads((output / "reports" / "F2" / "authz-results.json").read_text())
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(payload["findings"][0]["type"], "authorization_bypass")
+        self.assertIn("authz-matrix", result.stdout)
 
     def test_introspection_failure_makes_runner_fail(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

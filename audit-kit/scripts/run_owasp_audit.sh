@@ -11,6 +11,7 @@ PROJECT="${AUDIT_PROJECT:-}"
 PRODUCT="${AUDIT_PRODUCT_NAME:-}"
 SETTINGS_MODULE="${AUDIT_DJANGO_SETTINGS_MODULE:-}"
 DJANGO_PREFIX="${AUDIT_DJANGO_COMMAND_PREFIX:-poetry run python}"
+AUTHZ_MATRIX="${AUDIT_AUTHZ_MATRIX:-}"
 TARGET_URL="${AUDIT_TARGET_URL:-}"
 OUTPUT_DIR="${AUDIT_OUTPUT_DIR:-}"
 RUN_DAST="${AUDIT_RUN_DAST:-true}"
@@ -47,6 +48,7 @@ Obligatorios:
 Opcionales:
   --settings MODULE            DJANGO_SETTINGS_MODULE para manage.py check --deploy
   --django-command-prefix CMD  Prefijo seguro antes de manage.py, sin operadores de shell
+  --authz-matrix PATH          Matriz A01 rol/tenant/objeto con resultados esperados/observados
   --target URL                 URL staging/prod autorizada para DAST pasivo
   --output DIR                 Directorio de salida (defecto: audit-kit/runs/<slug>-<timestamp>)
   --image NAME                 Imagen Docker toolbox (defecto: owasp-audit:latest)
@@ -90,6 +92,7 @@ while [[ $# -gt 0 ]]; do
         --product) PRODUCT="$2"; shift 2 ;;
         --settings) SETTINGS_MODULE="$2"; shift 2 ;;
         --django-command-prefix) DJANGO_PREFIX="$2"; shift 2 ;;
+        --authz-matrix) AUTHZ_MATRIX="$2"; shift 2 ;;
         --target) TARGET_URL="$2"; shift 2 ;;
         --output) OUTPUT_DIR="$2"; shift 2 ;;
         --image) IMAGE="$2"; shift 2 ;;
@@ -116,6 +119,10 @@ done
 [[ -n "$PROJECT" ]] || die "--project es obligatorio"
 [[ -n "$PRODUCT" ]] || die "--product es obligatorio"
 [[ -d "$PROJECT" ]] || die "el directorio del proyecto no existe: $PROJECT"
+if [[ -n "$AUTHZ_MATRIX" ]]; then
+    [[ -f "$AUTHZ_MATRIX" ]] || die "la matriz de autorización no existe: $AUTHZ_MATRIX"
+    AUTHZ_MATRIX="$(cd "$(dirname "$AUTHZ_MATRIX")" && pwd -P)/$(basename "$AUTHZ_MATRIX")"
+fi
 [[ "$COVERAGE_THRESHOLD" =~ ^[0-9]+$ ]] || die "--coverage-threshold debe ser entero entre 0 y 100"
 COVERAGE_THRESHOLD_NUM=$((10#$COVERAGE_THRESHOLD))
 (( COVERAGE_THRESHOLD_NUM >= 0 && COVERAGE_THRESHOLD_NUM <= 100 )) || die "--coverage-threshold debe estar entre 0 y 100"
@@ -357,7 +364,10 @@ PY
     fi
     add_item "3 Custom SAST Rules" "$sast_status" "$sast_hint"
 
-    add_item "4 A01 Authz Matrix" "$( [[ "$output_ready" == READY ]] && echo CONFIGURING || echo MISSING )" "add F2/authz-matrix.yml"
+    local authz_status="MISSING" authz_hint="add --authz-matrix"
+    if [[ -n "$AUTHZ_MATRIX" && "$output_ready" == READY ]]; then authz_status="READY"; authz_hint="-";
+    elif [[ "$output_ready" == READY ]]; then authz_status="CONFIGURING"; fi
+    add_item "4 A01 Authz Matrix" "$authz_status" "$authz_hint"
 
     local dast_status="MISSING" dast_hint="set --target and --authorize-dast"
     if [[ "$dast_target" == READY && "$dast_auth" == READY ]]; then
@@ -425,6 +435,9 @@ PY
         plan+=("django-showmigrations (host)")
         plan+=("django-show-urls (host)")
     fi
+    if [[ -n "$AUTHZ_MATRIX" ]]; then
+        plan+=("authz-matrix (host)")
+    fi
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
         plan+=("http-headers (host)")
         plan+=("testssl (toolbox)")
@@ -482,10 +495,12 @@ if [[ "$GENERATE_ONLY" == "true" ]]; then
     printf 'Modo generate-only. No se ejecutarán escáneres.\n'
     write_status "scanners" "skipped" "0" "generate-only"
     if should_run_django; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
+    if [[ -n "$AUTHZ_MATRIX" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
 else
     TOOL_TOTAL=13
     if [[ "$RUN_TRUFFLEHOG" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     if should_run_django; then TOOL_TOTAL=$((TOOL_TOTAL + 5)); fi
+    if [[ -n "$AUTHZ_MATRIX" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
         TOOL_TOTAL=$((TOOL_TOTAL + 3))
         if [[ "$RUN_ZAP" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
@@ -624,6 +639,18 @@ else
     introspection_rc="0"
 fi
 
+authz_rc="0"
+if [[ -n "$AUTHZ_MATRIX" ]]; then
+    Q_AUTHZ_MATRIX="$(printf '%q' "$AUTHZ_MATRIX")"
+    Q_REPORTS="$(printf '%q' "$REPORTS_DIR")"
+    Q_AUTHZ_SCRIPT="$(printf '%q' "${SCRIPT_DIR}/authz_matrix.py")"
+    run_host "authz-matrix" "python3 ${Q_AUTHZ_SCRIPT} ${Q_AUTHZ_MATRIX} ${Q_REPORTS}"
+    authz_rc="$?"
+else
+    printf '  authz-matrix: omitido (sin --authz-matrix)\n'
+    write_status "authz-matrix" "skipped" "0" "omitido; sin --authz-matrix"
+fi
+
 python3 "${SCRIPT_DIR}/summarize_artifacts.py" "$REPORTS_DIR" 2> "${STATUS_DIR}/summarize-artifacts.log"
 summarize_rc=$?
 write_status "summarize-artifacts" "host" "$summarize_rc" "summarize_artifacts.py $REPORTS_DIR"
@@ -633,6 +660,9 @@ fi
 final_rc="$introspection_rc"
 if [[ "$final_rc" == "0" && "$django_rc" != "0" ]]; then
     final_rc="$django_rc"
+fi
+if [[ "$final_rc" == "0" && "$authz_rc" != "0" ]]; then
+    final_rc="$authz_rc"
 fi
 if [[ "$final_rc" == "0" && "$summarize_rc" != "0" ]]; then
     final_rc="$summarize_rc"
