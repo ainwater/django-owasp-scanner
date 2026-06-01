@@ -222,7 +222,7 @@ Matriz A01 de autorizacion e IDOR manual:
 
 ```bash
 # Usa los templates solo como referencia. Completa archivos privados con evidencia real.
-AUTHZ_MATRIX=/ruta/privada/authz-matrix.yml
+AUTHZ_MATRIX=/ruta/privada/authz-matrix.json
 IDOR_REVIEW=/ruta/privada/A01-idor-review.md
 
 ./audit-kit/scripts/run_owasp_audit.sh \
@@ -235,6 +235,7 @@ IDOR_REVIEW=/ruta/privada/A01-idor-review.md
 ```
 
 No pases los templates de `audit-kit/templates/` directamente como evidencia. Deben copiarse fuera de git, reemplazarse con casos reales y revisarse antes de ejecutar el runner.
+La matriz recomendada es JSON para evitar ambigüedad de parsing; el runner mantiene soporte YAML simple para archivos existentes. Por compatibilidad con el modelo OWASP del kit, la matriz entregada por el auditor se conserva como `F2/authz-matrix.yml` aunque el archivo de entrada sea JSON.
 
 Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar con `--authorize-dast`. Para importacion automatica, definir `DD_API_TOKEN` o usar `--dd-token`.
 
@@ -276,6 +277,7 @@ Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar 
 | `--run-trufflehog` | No | Habilita TruffleHog; puede producir evidencia con secretos |
 | `--coverage-threshold N` | No | Umbral minimo de evidencia requerida para gates OWASP (defecto: `80`) |
 | `--authorize-dast` | No | Confirma autorizacion explicita para DAST pasivo/no autenticado contra `--target` |
+| `--authorize-active-dast` | No | Confirma autorizacion explicita para DAST activo con mutaciones |
 | `--open-defectdojo` | No | Abre DefectDojo al finalizar si la importacion fue exitosa |
 | `--generate-only` | No | Solo crea estructura e inventario, sin scanners |
 | `--no-build` | No | No construye la imagen Docker |

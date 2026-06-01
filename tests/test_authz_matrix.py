@@ -86,6 +86,27 @@ class AuthzMatrixTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "expected"):
             authz_matrix.evaluate(matrix, source=Path("authz.yml"))
 
+    def test_evaluate_rejects_values_outside_declared_dimensions(self) -> None:
+        matrix = {
+            "roles": ["owner"],
+            "tenants": ["alpha"],
+            "objects": ["item:own"],
+            "checks": [
+                {
+                    "id": "unknown-role",
+                    "endpoint": "GET /x",
+                    "role": "other_user",
+                    "tenant": "alpha",
+                    "object": "item:own",
+                    "expected": "deny",
+                    "observed": "deny",
+                }
+            ],
+        }
+
+        with self.assertRaisesRegex(RuntimeError, "role"):
+            authz_matrix.evaluate(matrix, source=Path("authz.yml"))
+
     def test_evaluate_matrix_reports_bypass_when_denied_case_allows(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "authz.yml"
@@ -118,7 +139,7 @@ class AuthzMatrixTest(unittest.TestCase):
         self.assertEqual(payload["source"], "authz.yml")
 
     def test_authz_matrix_example_is_valid_and_contains_bypass_case(self) -> None:
-        path = ROOT / "audit-kit" / "templates" / "authz-matrix.example.yml"
+        path = ROOT / "audit-kit" / "templates" / "authz-matrix.example.json"
 
         result = authz_matrix.evaluate(authz_matrix.load_matrix(path), source=path)
 

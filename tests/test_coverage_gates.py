@@ -132,8 +132,23 @@ class CoverageGatesTest(unittest.TestCase):
 
         a01 = result["categories"][0]
         self.assertEqual(a01["status"], "fail")
-        self.assertEqual(a01["missing_required"], ["authz"])
+        self.assertEqual(a01["missing_required"], [])
+        self.assertEqual(a01["failed_results"], ["authz"])
         self.assertEqual(result["gates"]["status"], "fail")
+
+    def test_failed_result_artifact_blocks_gate_even_below_threshold(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reports = Path(tmp)
+            write(reports / "F4" / "semgrep.json")
+            write(reports / "F2" / "authz.yml")
+            write(reports / "F2" / "authz-results.json", '{"status":"fail"}')
+            write(reports / "status" / "django-check.status")
+
+            result = coverage_gates.evaluate(reports, model(), threshold=0)
+
+        self.assertEqual(result["categories"][0]["status"], "fail")
+        self.assertEqual(result["gates"]["status"], "fail")
+        self.assertEqual(result["gates"]["failed_categories"], ["A01"])
 
     def test_threshold_must_be_between_zero_and_one_hundred(self) -> None:
         with self.assertRaisesRegex(ValueError, "between 0 and 100"):

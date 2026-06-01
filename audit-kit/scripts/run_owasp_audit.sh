@@ -125,12 +125,14 @@ done
 if [[ -n "$AUTHZ_MATRIX" ]]; then
     [[ -f "$AUTHZ_MATRIX" ]] || die "la matriz de autorización no existe: $AUTHZ_MATRIX"
     AUTHZ_MATRIX="$(cd "$(dirname "$AUTHZ_MATRIX")" && pwd -P)/$(basename "$AUTHZ_MATRIX")"
-    case "$AUTHZ_MATRIX" in "${KIT_DIR}/templates/"*) die "no uses templates del audit kit como evidencia: $AUTHZ_MATRIX" ;; esac
+    AUTHZ_MATRIX_REAL="$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$AUTHZ_MATRIX")"
+    case "$AUTHZ_MATRIX_REAL" in "${KIT_DIR}/templates/"*) die "no uses templates del audit kit como evidencia: $AUTHZ_MATRIX" ;; esac
 fi
 if [[ -n "$IDOR_REVIEW" ]]; then
     [[ -f "$IDOR_REVIEW" ]] || die "la revisión IDOR no existe: $IDOR_REVIEW"
     IDOR_REVIEW="$(cd "$(dirname "$IDOR_REVIEW")" && pwd -P)/$(basename "$IDOR_REVIEW")"
-    case "$IDOR_REVIEW" in "${KIT_DIR}/templates/"*) die "no uses templates del audit kit como evidencia: $IDOR_REVIEW" ;; esac
+    IDOR_REVIEW_REAL="$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$IDOR_REVIEW")"
+    case "$IDOR_REVIEW_REAL" in "${KIT_DIR}/templates/"*) die "no uses templates del audit kit como evidencia: $IDOR_REVIEW" ;; esac
 fi
 [[ "$COVERAGE_THRESHOLD" =~ ^[0-9]+$ ]] || die "--coverage-threshold debe ser entero entre 0 y 100"
 COVERAGE_THRESHOLD_NUM=$((10#$COVERAGE_THRESHOLD))
@@ -573,9 +575,9 @@ testssl --version || true
     fi
 
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
-        run_host "http-headers" "python3 - <<'PY' > '${REPORTS_DIR}/F6/http-headers.txt'
+        run_host "http-headers" "AUDIT_TARGET_URL=$(printf '%q' "$TARGET_URL") python3 - <<'PY' > '${REPORTS_DIR}/F6/http-headers.txt'
 import os, urllib.request
-url = os.environ.get('AUDIT_TARGET_URL', '${TARGET_URL}')
+url = os.environ['AUDIT_TARGET_URL']
 req = urllib.request.Request(url, method='HEAD')
 sensitive = {'set-cookie', 'cookie', 'authorization', 'proxy-authorization', 'x-api-key', 'api-key'}
 try:

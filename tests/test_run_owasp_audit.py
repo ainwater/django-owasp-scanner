@@ -349,7 +349,7 @@ class RunOwaspAuditTest(unittest.TestCase):
                     "--product",
                     "Test",
                     "--authz-matrix",
-                    str(ROOT / "audit-kit" / "templates" / "authz-matrix.example.yml"),
+                    str(ROOT / "audit-kit" / "templates" / "authz-matrix.example.json"),
                     "--output",
                     tmp,
                     "--generate-only",
@@ -385,6 +385,70 @@ class RunOwaspAuditTest(unittest.TestCase):
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("template", result.stderr.lower())
+
+    def test_runner_rejects_symlink_to_bundled_authz_template(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            link = Path(tmp) / "authz.yml"
+            link.symlink_to(ROOT / "audit-kit" / "templates" / "authz-matrix.example.json")
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--authz-matrix",
+                    str(link),
+                    "--output",
+                    str(Path(tmp) / "out"),
+                    "--generate-only",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("template", result.stderr.lower())
+
+    def test_dast_target_is_not_interpolated_into_http_headers_python(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = root / "project"
+            output = root / "out"
+            fake_bin = root / "bin"
+            marker = root / "target-injection"
+            make_django_project(project)
+            make_fake_docker(fake_bin)
+            injected_target = f"https://example.com'), __import__('pathlib').Path({str(marker)!r}).write_text('pwned'), ('"
+            env = {**os.environ, "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"}
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(project),
+                    "--product",
+                    "Test",
+                    "--target",
+                    injected_target,
+                    "--authorize-dast",
+                    "--output",
+                    str(output),
+                    "--skip-dd-import",
+                    "--coverage-threshold",
+                    "0",
+                    "--no-build",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=env,
+            )
+            marker_exists = marker.exists()
+
+        self.assertFalse(marker_exists)
 
     def test_introspection_failure_makes_runner_fail(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

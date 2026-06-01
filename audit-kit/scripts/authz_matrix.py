@@ -44,7 +44,7 @@ def parse_simple_yaml(text: str) -> Any:
         stripped = line.strip()
         if stripped.startswith("- "):
             item = stripped[2:]
-            if ":" in item:
+            if ": " in item:
                 key, value = item.split(":", 1)
                 current_item = {key.strip(): parse_scalar(value)}
                 data[current_list].append(current_item)
@@ -91,6 +91,20 @@ def enum_value(check: dict[str, Any], field: str, allowed: set[str], cid: str) -
     return value
 
 
+def declared_values(matrix: dict[str, Any], field: str) -> set[str]:
+    values = matrix.get(field, [])
+    if values is None:
+        return set()
+    if not isinstance(values, list) or any(not isinstance(value, str) or not value.strip() for value in values):
+        raise RuntimeError(f"{field} must be a list of non-empty strings")
+    return {value.strip() for value in values}
+
+
+def require_declared(value: str, declared: set[str], field: str, cid: str) -> None:
+    if declared and value not in declared:
+        raise RuntimeError(f"check {cid} uses undeclared {field}: {value}")
+
+
 def check_id(check: dict[str, Any], index: int) -> str:
     value = check.get("id")
     return str(value) if value else f"check-{index}"
@@ -98,6 +112,9 @@ def check_id(check: dict[str, Any], index: int) -> str:
 
 def evaluate(matrix: dict[str, Any], source: Path) -> dict[str, Any]:
     checks = matrix["checks"]
+    roles = declared_values(matrix, "roles")
+    tenants = declared_values(matrix, "tenants")
+    objects = declared_values(matrix, "objects")
     results = []
     findings = []
     for index, raw in enumerate(checks, 1):
@@ -108,6 +125,9 @@ def evaluate(matrix: dict[str, Any], source: Path) -> dict[str, Any]:
         role = required_text(raw, "role", cid)
         tenant = required_text(raw, "tenant", cid)
         obj = required_text(raw, "object", cid)
+        require_declared(role, roles, "role", cid)
+        require_declared(tenant, tenants, "tenant", cid)
+        require_declared(obj, objects, "object", cid)
         expected = enum_value(raw, "expected", {"allow", "deny"}, cid)
         observed = enum_value(raw, "observed", {"allow", "deny", "unknown"}, cid)
         status = "pass" if expected and expected == observed else "fail"
