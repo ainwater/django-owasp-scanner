@@ -4,6 +4,7 @@ import subprocess
 import tempfile
 import unittest
 import os
+import shlex
 from pathlib import Path
 
 
@@ -32,6 +33,18 @@ def make_fake_docker(bin_dir: Path) -> None:
     write(
         bin_dir / "docker",
         "#!/usr/bin/env bash\n"
+        "if [[ \"$1 $2 $3\" == \"image inspect owasp-audit:latest\" ]]; then exit 0; fi\n"
+        "if [[ \"$1\" == \"run\" ]]; then exit 0; fi\n"
+        "exit 0\n",
+    )
+    (bin_dir / "docker").chmod(0o755)
+
+
+def make_recording_docker(bin_dir: Path, log_path: Path) -> None:
+    write(
+        bin_dir / "docker",
+        "#!/usr/bin/env bash\n"
+        f"printf '%s\\n' \"$*\" >> {shlex.quote(str(log_path))}\n"
         "if [[ \"$1 $2 $3\" == \"image inspect owasp-audit:latest\" ]]; then exit 0; fi\n"
         "if [[ \"$1\" == \"run\" ]]; then exit 0; fi\n"
         "exit 0\n",
@@ -467,6 +480,66 @@ class RunOwaspAuditTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0)
         self.assertIn("docker image  : CONFIGURING", result.stdout)
+
+    def test_dry_run_mentions_custom_semgrep_ruleset(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--output",
+                    tmp,
+                    "--dry-run",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("audit-kit/semgrep/django-drf.yml", result.stdout)
+
+    def test_full_run_mounts_custom_semgrep_ruleset_outside_project(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = root / "project"
+            output = root / "out"
+            fake_bin = root / "bin"
+            docker_log = root / "docker.log"
+            make_django_project(project)
+            make_recording_docker(fake_bin, docker_log)
+            env = {**os.environ, "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"}
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(project),
+                    "--product",
+                    "Test",
+                    "--output",
+                    str(output),
+                    "--skip-dd-import",
+                    "--skip-dast",
+                    "--coverage-threshold",
+                    "0",
+                    "--no-build",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=env,
+            )
+            docker_commands = docker_log.read_text()
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn(f"{ROOT / 'audit-kit' / 'semgrep'}:/workspace/audit-kit-semgrep:ro", docker_commands)
+        self.assertIn("--config /workspace/audit-kit-semgrep/django-drf.yml", docker_commands)
+        self.assertNotIn("/workspace/project/audit-kit/semgrep/django-drf.yml", docker_commands)
 
 
 if __name__ == "__main__":

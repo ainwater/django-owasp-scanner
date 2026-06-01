@@ -4,6 +4,7 @@ set -u
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 KIT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
 ROOT_DIR="$(cd "${KIT_DIR}/.." && pwd -P)"
+SEMGREP_RULES="audit-kit/semgrep/django-drf.yml"
 
 IMAGE="${AUDIT_DOCKER_IMAGE:-owasp-audit:latest}"
 PROJECT="${AUDIT_PROJECT:-}"
@@ -217,6 +218,7 @@ run_toolbox() {
         -e "AUDIT_TARGET_URL=${TARGET_URL}" \
         -e "RUFF_CACHE_DIR=/tmp/ruff-cache" \
         -v "${PROJECT}:/workspace/project:ro" \
+        -v "${KIT_DIR}/semgrep:/workspace/audit-kit-semgrep:ro" \
         -v "${REPORTS_DIR}:/workspace/reports:rw" \
         -w /workspace/project \
         "$IMAGE" -lc "$command" > "${STATUS_DIR}/${name}.log" 2>&1
@@ -403,7 +405,7 @@ PY
     plan+=("tool-versions (toolbox)")
     plan+=("bandit (toolbox)")
     plan+=("ruff-security (toolbox)")
-    plan+=("semgrep-django (toolbox)")
+    plan+=("semgrep-django (toolbox: ${SEMGREP_RULES})")
     plan+=("djlint (toolbox)")
     plan+=("detect-secrets (toolbox)")
     plan+=("gitleaks (toolbox)")
@@ -514,7 +516,7 @@ testssl --version || true
 
     run_toolbox "bandit"           'bandit -r . -f json -o /workspace/reports/F4/bandit.json'
     run_toolbox "ruff-security"    'ruff check --select S --output-format json --no-cache . > /workspace/reports/F4/ruff-security.json'
-    run_toolbox "semgrep-django"   'semgrep --config p/python --config p/django --json --output /workspace/reports/F4/semgrep-django.json .'
+    run_toolbox "semgrep-django"   'semgrep --config p/python --config p/django --config /workspace/audit-kit-semgrep/django-drf.yml --json --output /workspace/reports/F4/semgrep-django.json .'
     run_toolbox "djlint"           'djlint . --profile django --lint > /workspace/reports/F4/djlint.txt || rc=$?; exit ${rc:-0}'
     run_toolbox "detect-secrets"   'detect-secrets scan --all-files --exclude-files "(^|/)(.git|.venv|venv|node_modules|staticfiles|media|audit-kit/runs)/" > /workspace/reports/F4/detect-secrets.json'
     run_toolbox "gitleaks"         'gitleaks dir . --report-format json --report-path /workspace/reports/F4/gitleaks.json --no-banner --redact=20 || rc=$?; [ -f /workspace/reports/F4/gitleaks.json ] || printf "[]\n" > /workspace/reports/F4/gitleaks.json; exit ${rc:-0}'
