@@ -1,0 +1,136 @@
+rules:
+  - id: django.csrf-exempt
+    message: Avoid disabling CSRF protection without a documented compensating control.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      category: security
+      owasp: "2025"
+      cwe: "CWE-352"
+    pattern-either:
+      - pattern: |
+          @csrf_exempt
+          def $VIEW(...):
+            ...
+      - pattern: |
+          @method_decorator(csrf_exempt, ...)
+          def $VIEW(...):
+            ...
+      - pattern: |
+          @method_decorator(csrf_exempt, ...)
+          class $VIEW(...):
+            ...
+      - pattern: csrf_exempt($VIEW)
+
+  - id: django.raw-sql
+    message: Review raw SQL usage and confirm parameters are bound instead of string-built.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      category: security
+      owasp: "2025"
+      cwe: "CWE-89"
+    pattern-either:
+      - pattern: $MODEL.objects.raw(...)
+      - pattern: $QUERYSET.raw(...)
+      - pattern: $CURSOR.execute("...")
+      - pattern: $CURSOR.execute('...')
+      - pattern: $CURSOR.execute(f"...")
+      - pattern: $CURSOR.execute(f'...')
+      - pattern: $CURSOR.execute("..." % ...)
+      - pattern: $CURSOR.execute('...' % ...)
+      - pattern: $CURSOR.execute("..." + ...)
+      - pattern: $CURSOR.execute('...' + ...)
+      - pattern: $CURSOR.executemany("...", ...)
+      - pattern: $CURSOR.executemany('...', ...)
+
+  - id: django.mark-safe
+    message: Review mark_safe/SafeString usage; ensure input is trusted or sanitized.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      category: security
+      owasp: "2025"
+      cwe: "CWE-79"
+    pattern-either:
+      - pattern: mark_safe(...)
+      - pattern: SafeString(...)
+      - pattern: SafeText(...)
+
+  - id: python.pickle-load
+    message: Do not deserialize untrusted data with pickle.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      owasp: "2025"
+      cwe: "CWE-502"
+    pattern-either:
+      - pattern: pickle.load(...)
+      - pattern: pickle.loads(...)
+
+  - id: python.yaml-load-unsafe
+    message: Use yaml.safe_load or pass SafeLoader explicitly.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      owasp: "2025"
+      cwe: "CWE-502"
+    patterns:
+      - pattern: yaml.load(...)
+      - pattern-not: yaml.load(..., Loader=yaml.SafeLoader, ...)
+      - pattern-not: yaml.load(..., Loader=yaml.CSafeLoader, ...)
+      - pattern-not: yaml.load(..., Loader=SafeLoader, ...)
+      - pattern-not: yaml.load(..., Loader=CSafeLoader, ...)
+      - pattern-not: yaml.load(..., yaml.SafeLoader, ...)
+      - pattern-not: yaml.load(..., yaml.CSafeLoader, ...)
+      - pattern-not: yaml.load(..., SafeLoader, ...)
+      - pattern-not: yaml.load(..., CSafeLoader, ...)
+
+  - id: drf.allow-any
+    message: Review DRF AllowAny usage; public endpoints should be explicit and documented.
+    severity: WARNING
+    languages: [python]
+    metadata:
+      category: security
+      owasp: "2025"
+      cwe: "CWE-862"
+    pattern-either:
+      - pattern: permission_classes = [AllowAny]
+      - pattern: permission_classes = [permissions.AllowAny]
+      - pattern: permission_classes = [..., AllowAny, ...]
+      - pattern: permission_classes = [..., permissions.AllowAny, ...]
+      - pattern: permission_classes = (..., AllowAny, ...)
+      - pattern: permission_classes = (..., permissions.AllowAny, ...)
+      - pattern: permission_classes = ($X, AllowAny, ...)
+      - pattern: permission_classes = ($X, permissions.AllowAny, ...)
+      - pattern: |
+          @permission_classes([AllowAny])
+          def $VIEW(...):
+            ...
+      - pattern: |
+          @permission_classes([permissions.AllowAny])
+          def $VIEW(...):
+            ...
+      - pattern: |
+          @permission_classes([..., AllowAny, ...])
+          def $VIEW(...):
+            ...
+      - pattern: |
+          @permission_classes([..., permissions.AllowAny, ...])
+          def $VIEW(...):
+            ...
+
+  - id: django.auth-weak-password-hasher
+    message: Do not enable weak Django password hashers outside legacy migration windows.
+    severity: ERROR
+    languages: [python]
+    metadata:
+      category: security
+      owasp: "2025"
+      cwe: "CWE-916"
+    pattern-either:
+      - pattern: PASSWORD_HASHERS = [..., "django.contrib.auth.hashers.MD5PasswordHasher", ...]
+      - pattern: PASSWORD_HASHERS = [..., "django.contrib.auth.hashers.UnsaltedMD5PasswordHasher", ...]
+      - pattern: PASSWORD_HASHERS = [..., "django.contrib.auth.hashers.CryptPasswordHasher", ...]

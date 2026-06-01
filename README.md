@@ -272,6 +272,8 @@ Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar 
 | TLS | testssl.sh, SSLyze |
 | Django nativo | Introspeccion settings/URLs, `manage.py check --deploy`, `showmigrations`, `show_urls` |
 
+`semgrep-django` combina los packs upstream `p/python` y `p/django` con reglas locales en `audit-kit/semgrep/django-drf.yml` para sinks Django/DRF de autenticacion, CSRF, SQL, templates y deserializacion.
+
 ## DefectDojo
 
 ### Iniciar instancia local
