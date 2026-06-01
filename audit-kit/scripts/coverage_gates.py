@@ -29,9 +29,19 @@ def evidence_status(reports: Path, paths: list[str], required: bool) -> str:
     if not paths:
         return "missing" if required else "optional_missing"
     present = [(reports / path).is_file() and (reports / path).stat().st_size > 0 for path in paths]
-    if (all(present) if required else any(present)):
+    if (all(present) if required else any(present)) and result_artifacts_pass(reports, paths):
         return "present"
     return "missing" if required else "optional_missing"
+
+
+def result_artifacts_pass(reports: Path, paths: list[str]) -> bool:
+    for path in paths:
+        if not path.endswith("-results.json"):
+            continue
+        data = load_json(reports / path)
+        if data.get("status") != "pass":
+            return False
+    return True
 
 
 def evidence_rows(reports: Path, items: list[dict[str, Any]]) -> list[dict[str, Any]]:

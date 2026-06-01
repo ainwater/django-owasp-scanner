@@ -8,6 +8,7 @@ from pathlib import Path
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "audit-kit" / "scripts" / "authz_matrix.py"
+ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("authz_matrix", SCRIPT)
 authz_matrix = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
@@ -115,6 +116,22 @@ class AuthzMatrixTest(unittest.TestCase):
         self.assertEqual(copied_text, MATRIX)
         self.assertEqual(payload["status"], "fail")
         self.assertEqual(payload["source"], "authz.yml")
+
+    def test_authz_matrix_example_is_valid_and_contains_bypass_case(self) -> None:
+        path = ROOT / "audit-kit" / "templates" / "authz-matrix.example.yml"
+
+        result = authz_matrix.evaluate(authz_matrix.load_matrix(path), source=path)
+
+        self.assertGreaterEqual(result["summary"]["total"], 3)
+        self.assertEqual(result["status"], "fail")
+        self.assertIn("authorization_bypass", {finding["type"] for finding in result["findings"]})
+
+    def test_idor_review_template_has_required_sections(self) -> None:
+        content = (ROOT / "audit-kit" / "templates" / "A01-idor-review.example.md").read_text()
+
+        self.assertIn("## Scope", content)
+        self.assertIn("## Test Cases", content)
+        self.assertIn("## Sign-off", content)
 
 
 if __name__ == "__main__":

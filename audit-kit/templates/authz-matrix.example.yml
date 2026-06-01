@@ -1,0 +1,42 @@
+version: 1
+roles:
+  - anonymous
+  - owner
+  - other_user
+  - admin
+tenants:
+  - tenant-a
+  - tenant-b
+objects:
+  - invoice:own
+  - invoice:other
+  - admin-report:global
+checks:
+  - id: invoice-detail-owner
+    endpoint: GET /api/invoices/{id}/
+    role: owner
+    tenant: tenant-a
+    object: invoice:own
+    expected: allow
+    observed: allow
+  - id: invoice-detail-other-user
+    endpoint: GET /api/invoices/{id}/
+    role: other_user
+    tenant: tenant-a
+    object: invoice:own
+    expected: deny
+    observed: deny
+  - id: invoice-detail-cross-tenant
+    endpoint: GET /api/invoices/{id}/
+    role: owner
+    tenant: tenant-b
+    object: invoice:own
+    expected: deny
+    observed: allow
+  - id: admin-report-anonymous
+    endpoint: GET /admin/reports/{id}/
+    role: anonymous
+    tenant: tenant-a
+    object: admin-report:global
+    expected: deny
+    observed: deny

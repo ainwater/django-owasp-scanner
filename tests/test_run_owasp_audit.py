@@ -304,6 +304,88 @@ class RunOwaspAuditTest(unittest.TestCase):
         self.assertEqual(payload["findings"][0]["type"], "authorization_bypass")
         self.assertIn("authz-matrix", result.stdout)
 
+    def test_generate_only_with_idor_review_copies_manual_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = root / "idor.md"
+            output = root / "out"
+            write(review, "# IDOR Review\n\n- Status: accepted\n")
+
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--idor-review",
+                    str(review),
+                    "--output",
+                    str(output),
+                    "--generate-only",
+                    "--skip-dd-import",
+                    "--coverage-threshold",
+                    "0",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            copied = output / "reports" / "F5" / "A01-idor-review.md"
+            copied_text = copied.read_text() if copied.exists() else ""
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Status: accepted", copied_text)
+
+    def test_runner_rejects_bundled_authz_templates_as_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--authz-matrix",
+                    str(ROOT / "audit-kit" / "templates" / "authz-matrix.example.yml"),
+                    "--output",
+                    tmp,
+                    "--generate-only",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("template", result.stderr.lower())
+
+    def test_runner_rejects_bundled_idor_templates_as_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--idor-review",
+                    str(ROOT / "audit-kit" / "templates" / "A01-idor-review.example.md"),
+                    "--output",
+                    tmp,
+                    "--generate-only",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("template", result.stderr.lower())
+
     def test_introspection_failure_makes_runner_fail(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

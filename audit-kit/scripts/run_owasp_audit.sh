@@ -12,6 +12,7 @@ PRODUCT="${AUDIT_PRODUCT_NAME:-}"
 SETTINGS_MODULE="${AUDIT_DJANGO_SETTINGS_MODULE:-}"
 DJANGO_PREFIX="${AUDIT_DJANGO_COMMAND_PREFIX:-poetry run python}"
 AUTHZ_MATRIX="${AUDIT_AUTHZ_MATRIX:-}"
+IDOR_REVIEW="${AUDIT_IDOR_REVIEW:-}"
 TARGET_URL="${AUDIT_TARGET_URL:-}"
 OUTPUT_DIR="${AUDIT_OUTPUT_DIR:-}"
 RUN_DAST="${AUDIT_RUN_DAST:-true}"
@@ -49,6 +50,7 @@ Opcionales:
   --settings MODULE            DJANGO_SETTINGS_MODULE para manage.py check --deploy
   --django-command-prefix CMD  Prefijo seguro antes de manage.py, sin operadores de shell
   --authz-matrix PATH          Matriz A01 rol/tenant/objeto con resultados esperados/observados
+  --idor-review PATH           Revision manual IDOR/A01 validada por el auditor
   --target URL                 URL staging/prod autorizada para DAST pasivo
   --output DIR                 Directorio de salida (defecto: audit-kit/runs/<slug>-<timestamp>)
   --image NAME                 Imagen Docker toolbox (defecto: owasp-audit:latest)
@@ -93,6 +95,7 @@ while [[ $# -gt 0 ]]; do
         --settings) SETTINGS_MODULE="$2"; shift 2 ;;
         --django-command-prefix) DJANGO_PREFIX="$2"; shift 2 ;;
         --authz-matrix) AUTHZ_MATRIX="$2"; shift 2 ;;
+        --idor-review) IDOR_REVIEW="$2"; shift 2 ;;
         --target) TARGET_URL="$2"; shift 2 ;;
         --output) OUTPUT_DIR="$2"; shift 2 ;;
         --image) IMAGE="$2"; shift 2 ;;
@@ -122,6 +125,12 @@ done
 if [[ -n "$AUTHZ_MATRIX" ]]; then
     [[ -f "$AUTHZ_MATRIX" ]] || die "la matriz de autorización no existe: $AUTHZ_MATRIX"
     AUTHZ_MATRIX="$(cd "$(dirname "$AUTHZ_MATRIX")" && pwd -P)/$(basename "$AUTHZ_MATRIX")"
+    case "$AUTHZ_MATRIX" in "${KIT_DIR}/templates/"*) die "no uses templates del audit kit como evidencia: $AUTHZ_MATRIX" ;; esac
+fi
+if [[ -n "$IDOR_REVIEW" ]]; then
+    [[ -f "$IDOR_REVIEW" ]] || die "la revisión IDOR no existe: $IDOR_REVIEW"
+    IDOR_REVIEW="$(cd "$(dirname "$IDOR_REVIEW")" && pwd -P)/$(basename "$IDOR_REVIEW")"
+    case "$IDOR_REVIEW" in "${KIT_DIR}/templates/"*) die "no uses templates del audit kit como evidencia: $IDOR_REVIEW" ;; esac
 fi
 [[ "$COVERAGE_THRESHOLD" =~ ^[0-9]+$ ]] || die "--coverage-threshold debe ser entero entre 0 y 100"
 COVERAGE_THRESHOLD_NUM=$((10#$COVERAGE_THRESHOLD))
@@ -496,11 +505,13 @@ if [[ "$GENERATE_ONLY" == "true" ]]; then
     write_status "scanners" "skipped" "0" "generate-only"
     if should_run_django; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     if [[ -n "$AUTHZ_MATRIX" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
+    if [[ -n "$IDOR_REVIEW" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
 else
     TOOL_TOTAL=13
     if [[ "$RUN_TRUFFLEHOG" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     if should_run_django; then TOOL_TOTAL=$((TOOL_TOTAL + 5)); fi
     if [[ -n "$AUTHZ_MATRIX" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
+    if [[ -n "$IDOR_REVIEW" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
         TOOL_TOTAL=$((TOOL_TOTAL + 3))
         if [[ "$RUN_ZAP" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
@@ -651,6 +662,18 @@ else
     write_status "authz-matrix" "skipped" "0" "omitido; sin --authz-matrix"
 fi
 
+idor_rc="0"
+if [[ -n "$IDOR_REVIEW" ]]; then
+    progress "idor-review"
+    cp "$IDOR_REVIEW" "${REPORTS_DIR}/F5/A01-idor-review.md"
+    idor_rc="$?"
+    progress_done "$idor_rc"
+    write_status "idor-review" "host" "$idor_rc" "copy IDOR review to F5/A01-idor-review.md"
+else
+    printf '  idor-review: omitido (sin --idor-review)\n'
+    write_status "idor-review" "skipped" "0" "omitido; sin --idor-review"
+fi
+
 python3 "${SCRIPT_DIR}/summarize_artifacts.py" "$REPORTS_DIR" 2> "${STATUS_DIR}/summarize-artifacts.log"
 summarize_rc=$?
 write_status "summarize-artifacts" "host" "$summarize_rc" "summarize_artifacts.py $REPORTS_DIR"
@@ -663,6 +686,9 @@ if [[ "$final_rc" == "0" && "$django_rc" != "0" ]]; then
 fi
 if [[ "$final_rc" == "0" && "$authz_rc" != "0" ]]; then
     final_rc="$authz_rc"
+fi
+if [[ "$final_rc" == "0" && "$idor_rc" != "0" ]]; then
+    final_rc="$idor_rc"
 fi
 if [[ "$final_rc" == "0" && "$summarize_rc" != "0" ]]; then
     final_rc="$summarize_rc"
