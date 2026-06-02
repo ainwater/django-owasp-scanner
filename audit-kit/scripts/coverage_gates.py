@@ -39,7 +39,7 @@ def result_artifacts_pass(reports: Path, paths: list[str]) -> bool:
         if not path.endswith("-results.json"):
             continue
         result_path = reports / path
-        if not result_path.exists():
+        if not result_path.is_file() or result_path.stat().st_size == 0:
             continue
         data = load_json(result_path)
         if data.get("status") != "pass":
