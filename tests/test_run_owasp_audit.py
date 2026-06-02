@@ -53,6 +53,18 @@ def make_recording_docker(bin_dir: Path, log_path: Path) -> None:
     (bin_dir / "docker").chmod(0o755)
 
 
+def write_session_review(path: Path, status: str = "pass") -> None:
+    controls = [
+        "logout_invalidates_session",
+        "session_rotation",
+        "enumeration_resistance",
+        "mfa_privileged",
+        "brute_force_protection",
+    ]
+    checks = [{"id": control, "status": status, "evidence": f"{control} evidence"} for control in controls]
+    write(path, json.dumps({"checks": checks}))
+
+
 def make_fake_docker_without_image(bin_dir: Path) -> None:
     write(
         bin_dir / "docker",
@@ -338,6 +350,110 @@ class RunOwaspAuditTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("Status: accepted", copied_text)
 
+    def test_generate_only_with_session_review_writes_session_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = root / "session-review.json"
+            output = root / "out"
+            write_session_review(review)
+
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--session-review",
+                    str(review),
+                    "--output",
+                    str(output),
+                    "--generate-only",
+                    "--skip-dd-import",
+                    "--coverage-threshold",
+                    "0",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            evidence = output / "reports" / "F2" / "session-security.json"
+            results = output / "reports" / "F2" / "session-security-results.json"
+            evidence_exists = evidence.is_file()
+            payload = json.loads(results.read_text()) if results.exists() else {}
+
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue(evidence_exists)
+        self.assertEqual(payload["status"], "pass")
+
+    def test_session_review_failure_makes_runner_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = root / "session-review.json"
+            output = root / "out"
+            write_session_review(review, status="fail")
+
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--session-review",
+                    str(review),
+                    "--output",
+                    str(output),
+                    "--generate-only",
+                    "--skip-dd-import",
+                    "--coverage-threshold",
+                    "0",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 1)
+        self.assertIn("session-security", result.stdout)
+
+    def test_session_review_status_does_not_record_private_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            private_dir = root / "private" / "client"
+            review = private_dir / "session-review.json"
+            output = root / "out"
+            write_session_review(review)
+
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--session-review",
+                    str(review),
+                    "--output",
+                    str(output),
+                    "--generate-only",
+                    "--skip-dd-import",
+                    "--coverage-threshold",
+                    "0",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            status = (output / "reports" / "status" / "session-security.status").read_text()
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("session-review.json", status)
+        self.assertNotIn(str(private_dir), status)
+
     def test_runner_rejects_bundled_authz_templates_as_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             result = subprocess.run(
@@ -378,6 +494,30 @@ class RunOwaspAuditTest(unittest.TestCase):
                     str(link),
                     "--output",
                     str(Path(tmp) / "out"),
+                    "--generate-only",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("template", result.stderr.lower())
+
+    def test_runner_rejects_bundled_session_templates_as_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--session-review",
+                    str(ROOT / "audit-kit" / "templates" / "evidence-manifest.example.json"),
+                    "--output",
+                    tmp,
                     "--generate-only",
                 ],
                 capture_output=True,
@@ -743,8 +883,60 @@ class RunOwaspAuditTest(unittest.TestCase):
             )
 
         self.assertEqual(result.returncode, 0)
-        self.assertRegex(result.stdout, r"5 A01 IDOR Review\s+READY")
+        self.assertRegex(result.stdout, r"4b A01 IDOR Review\s+READY")
         self.assertIn("idor-review (host)", result.stdout)
+
+    def test_dry_run_includes_session_review_readiness_and_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = root / "session-review.json"
+            write_session_review(review)
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--session-review",
+                    str(review),
+                    "--output",
+                    str(root / "out"),
+                    "--dry-run",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertRegex(result.stdout, r"4c A01 Session Security\s+READY")
+        self.assertIn("session-security (host)", result.stdout)
+
+    def test_dry_run_readiness_uses_ten_pr_roadmap(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--output",
+                    tmp,
+                    "--dry-run",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("4 Authz & Session", result.stdout)
+        self.assertIn("10 Final Report", result.stdout)
+        self.assertNotIn("16 Final Audit Package", result.stdout)
 
     def test_full_run_mounts_custom_semgrep_ruleset_outside_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -35,7 +35,8 @@
       ],
       "manual_evidence": [
         {"id": "authz_matrix", "artifacts": ["F2/authz-matrix.yml", "F2/authz-results.json"], "required": true},
-        {"id": "idor_review", "artifacts": ["F5/A01-idor-review.md"], "required": true}
+        {"id": "idor_review", "artifacts": ["F5/A01-idor-review.md"], "required": true},
+        {"id": "session_security", "artifacts": ["F2/session-security.json", "F2/session-security-results.json"], "required": true}
       ],
       "defectdojo_tags": ["owasp-2025", "A01", "django", "authorization", "access-control"]
     },
