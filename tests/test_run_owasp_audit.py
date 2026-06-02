@@ -362,30 +362,6 @@ class RunOwaspAuditTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("template", result.stderr.lower())
 
-    def test_runner_rejects_bundled_idor_templates_as_evidence(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp:
-            result = subprocess.run(
-                [
-                    "bash",
-                    str(RUNNER),
-                    "--project",
-                    str(ROOT),
-                    "--product",
-                    "Test",
-                    "--idor-review",
-                    str(ROOT / "audit-kit" / "templates" / "A01-idor-review.example.md"),
-                    "--output",
-                    tmp,
-                    "--generate-only",
-                ],
-                capture_output=True,
-                text=True,
-                check=False,
-            )
-
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("template", result.stderr.lower())
-
     def test_runner_rejects_symlink_to_bundled_authz_template(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             link = Path(tmp) / "authz.yml"

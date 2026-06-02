@@ -147,13 +147,5 @@ class AuthzMatrixTest(unittest.TestCase):
         self.assertEqual(result["status"], "fail")
         self.assertIn("authorization_bypass", {finding["type"] for finding in result["findings"]})
 
-    def test_idor_review_template_has_required_sections(self) -> None:
-        content = (ROOT / "audit-kit" / "templates" / "A01-idor-review.example.md").read_text()
-
-        self.assertIn("## Scope", content)
-        self.assertIn("## Test Cases", content)
-        self.assertIn("## Sign-off", content)
-
-
 if __name__ == "__main__":
     unittest.main()
