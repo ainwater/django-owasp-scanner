@@ -380,6 +380,11 @@ PY
     elif [[ "$output_ready" == READY ]]; then authz_status="CONFIGURING"; fi
     add_item "4 A01 Authz Matrix" "$authz_status" "$authz_hint"
 
+    local idor_status="MISSING" idor_hint="add --idor-review"
+    if [[ -n "$IDOR_REVIEW" && "$output_ready" == READY ]]; then idor_status="READY"; idor_hint="-";
+    elif [[ "$output_ready" == READY ]]; then idor_status="CONFIGURING"; fi
+    add_item "5 A01 IDOR Review" "$idor_status" "$idor_hint"
+
     local dast_status="MISSING" dast_hint="set --target and --authorize-dast"
     if [[ "$dast_target" == READY && "$dast_auth" == READY ]]; then
         dast_status="READY"; dast_hint="target: ${TARGET_URL}"
@@ -448,6 +453,9 @@ PY
     fi
     if [[ -n "$AUTHZ_MATRIX" ]]; then
         plan+=("authz-matrix (host)")
+    fi
+    if [[ -n "$IDOR_REVIEW" ]]; then
+        plan+=("idor-review (host)")
     fi
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
         plan+=("http-headers (host)")

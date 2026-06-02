@@ -718,6 +718,34 @@ class RunOwaspAuditTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0)
         self.assertIn("audit-kit/semgrep/django-drf.yml", result.stdout)
 
+    def test_dry_run_includes_idor_review_readiness_and_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = root / "idor.md"
+            review.write_text("# IDOR review\n")
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--idor-review",
+                    str(review),
+                    "--output",
+                    str(root / "out"),
+                    "--dry-run",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertRegex(result.stdout, r"5 A01 IDOR Review\s+READY")
+        self.assertIn("idor-review (host)", result.stdout)
+
     def test_full_run_mounts_custom_semgrep_ruleset_outside_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

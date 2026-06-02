@@ -10,8 +10,8 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parents[1] / "audit-kit" / "scripts" / "authz_matrix.py"
 ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("authz_matrix", SCRIPT)
-authz_matrix = importlib.util.module_from_spec(SPEC)
 assert SPEC and SPEC.loader
+authz_matrix = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(authz_matrix)
 
 
