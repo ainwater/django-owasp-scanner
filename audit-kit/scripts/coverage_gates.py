@@ -34,6 +34,27 @@ def evidence_status(reports: Path, paths: list[str], required: bool) -> str:
     return "missing" if required else "optional_missing"
 
 
+def result_artifacts_pass(reports: Path, paths: list[str]) -> bool:
+    for path in paths:
+        if not path.endswith("-results.json"):
+            continue
+        result_path = reports / path
+        if not result_path.is_file() or result_path.stat().st_size == 0:
+            continue
+        data = load_json(result_path)
+        if data.get("status") != "pass":
+            return False
+    return True
+
+
+def failed_result_artifacts(reports: Path, rows: list[dict[str, Any]]) -> list[str]:
+    failed = []
+    for row in rows:
+        if not result_artifacts_pass(reports, row["artifacts"]):
+            failed.append(row["id"])
+    return failed
+
+
 def evidence_rows(reports: Path, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
     rows = []
     for item in items:
@@ -69,6 +90,7 @@ def parse_threshold(value: str) -> int:
 def evaluate_category(reports: Path, category: dict[str, Any], threshold: int) -> dict[str, Any]:
     automated = evidence_rows(reports, category.get("automated_evidence", []))
     manual = evidence_rows(reports, category.get("manual_evidence", []))
+    failed_results = failed_result_artifacts(reports, automated + manual)
     required = [item for item in automated + manual if item["required"]]
     missing = [item["id"] for item in required if item["status"] == "missing"]
     present = len(required) - len(missing)
@@ -76,11 +98,12 @@ def evaluate_category(reports: Path, category: dict[str, Any], threshold: int) -
     return {
         "id": category.get("id", ""),
         "name": category.get("name", ""),
-        "status": "pass" if coverage >= threshold else "fail",
+        "status": "pass" if coverage >= threshold and not failed_results else "fail",
         "coverage_percent": coverage,
         "required_present": present,
         "required_total": len(required),
         "missing_required": missing,
+        "failed_results": failed_results,
         "automated": automated,
         "manual": manual,
         "required_manual_missing": [item["id"] for item in manual if item["required"] and item["status"] == "missing"],

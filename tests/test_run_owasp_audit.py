@@ -5,6 +5,7 @@ import tempfile
 import unittest
 import os
 import shlex
+import json
 from pathlib import Path
 
 
@@ -210,6 +211,220 @@ class RunOwaspAuditTest(unittest.TestCase):
         self.assertTrue(settings_exists)
         self.assertTrue(urls_exists)
         self.assertNotIn("[1/0]", result.stdout)
+
+    def test_generate_only_with_authz_matrix_writes_a01_artifacts(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            matrix = root / "authz.yml"
+            output = root / "out"
+            write(
+                matrix,
+                "version: 1\n"
+                "checks:\n"
+                "  - id: owner-detail\n"
+                "    endpoint: GET /api/items/{id}/\n"
+                "    role: owner\n"
+                "    tenant: alpha\n"
+                "    object: item:own\n"
+                "    expected: allow\n"
+                "    observed: allow\n",
+            )
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--authz-matrix",
+                    str(matrix),
+                    "--output",
+                    str(output),
+                    "--generate-only",
+                    "--skip-dd-import",
+                    "--coverage-threshold",
+                    "0",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            copied = output / "reports" / "F2" / "authz-matrix.yml"
+            results = output / "reports" / "F2" / "authz-results.json"
+            copied_exists = copied.is_file()
+            payload = json.loads(results.read_text()) if results.exists() else {}
+
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue(copied_exists)
+        self.assertEqual(payload["status"], "pass")
+        self.assertNotIn("[1/0]", result.stdout)
+
+    def test_authz_matrix_failure_makes_runner_fail(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            matrix = root / "authz.yml"
+            output = root / "out"
+            write(
+                matrix,
+                "version: 1\n"
+                "checks:\n"
+                "  - id: cross-tenant-detail\n"
+                "    endpoint: GET /api/items/{id}/\n"
+                "    role: other_user\n"
+                "    tenant: beta\n"
+                "    object: item:own\n"
+                "    expected: deny\n"
+                "    observed: allow\n",
+            )
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--authz-matrix",
+                    str(matrix),
+                    "--output",
+                    str(output),
+                    "--generate-only",
+                    "--skip-dd-import",
+                    "--coverage-threshold",
+                    "0",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            payload = json.loads((output / "reports" / "F2" / "authz-results.json").read_text())
+
+        self.assertEqual(result.returncode, 1)
+        self.assertEqual(payload["findings"][0]["type"], "authorization_bypass")
+        self.assertIn("authz-matrix", result.stdout)
+
+    def test_generate_only_with_idor_review_copies_manual_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = root / "idor.md"
+            output = root / "out"
+            write(review, "# IDOR Review\n\n- Status: accepted\n")
+
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--idor-review",
+                    str(review),
+                    "--output",
+                    str(output),
+                    "--generate-only",
+                    "--skip-dd-import",
+                    "--coverage-threshold",
+                    "0",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            copied = output / "reports" / "F5" / "A01-idor-review.md"
+            copied_text = copied.read_text() if copied.exists() else ""
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("Status: accepted", copied_text)
+
+    def test_runner_rejects_bundled_authz_templates_as_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--authz-matrix",
+                    str(ROOT / "audit-kit" / "templates" / "authz-matrix.example.json"),
+                    "--output",
+                    tmp,
+                    "--generate-only",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("template", result.stderr.lower())
+
+    def test_runner_rejects_symlink_to_bundled_authz_template(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            link = Path(tmp) / "authz.yml"
+            link.symlink_to(ROOT / "audit-kit" / "templates" / "authz-matrix.example.json")
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--authz-matrix",
+                    str(link),
+                    "--output",
+                    str(Path(tmp) / "out"),
+                    "--generate-only",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("template", result.stderr.lower())
+
+    def test_dast_target_is_not_interpolated_into_http_headers_python(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            project = root / "project"
+            output = root / "out"
+            fake_bin = root / "bin"
+            marker = root / "target-injection"
+            make_django_project(project)
+            make_fake_docker(fake_bin)
+            injected_target = f"https://example.com'), __import__('pathlib').Path({str(marker)!r}).write_text('pwned'), ('"
+            env = {**os.environ, "PATH": f"{fake_bin}{os.pathsep}{os.environ['PATH']}"}
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(project),
+                    "--product",
+                    "Test",
+                    "--target",
+                    injected_target,
+                    "--authorize-dast",
+                    "--output",
+                    str(output),
+                    "--skip-dd-import",
+                    "--coverage-threshold",
+                    "0",
+                    "--no-build",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                env=env,
+            )
+            marker_exists = marker.exists()
+
+        self.assertFalse(marker_exists)
 
     def test_introspection_failure_makes_runner_fail(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -502,6 +717,34 @@ class RunOwaspAuditTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0)
         self.assertIn("audit-kit/semgrep/django-drf.yml", result.stdout)
+
+    def test_dry_run_includes_idor_review_readiness_and_plan(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = root / "idor.md"
+            review.write_text("# IDOR review\n")
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--idor-review",
+                    str(review),
+                    "--output",
+                    str(root / "out"),
+                    "--dry-run",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertRegex(result.stdout, r"5 A01 IDOR Review\s+READY")
+        self.assertIn("idor-review (host)", result.stdout)
 
     def test_full_run_mounts_custom_semgrep_ruleset_outside_project(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -218,21 +218,42 @@ Sólo análisis de código, sin DAST:
   --skip-dast
 ```
 
+Matriz A01 de autorizacion e IDOR manual:
+
+```bash
+# Usa los templates solo como referencia. Completa archivos privados con evidencia real.
+AUTHZ_MATRIX=/ruta/privada/authz-matrix.json
+IDOR_REVIEW=/ruta/privada/A01-idor-review.md
+
+./audit-kit/scripts/run_owasp_audit.sh \
+  --project "$AUDIT_PROJECT" \
+  --product "$AUDIT_PRODUCT_NAME" \
+  --authz-matrix "$AUTHZ_MATRIX" \
+  --idor-review "$IDOR_REVIEW" \
+  --skip-dast \
+  --skip-dd-import
+```
+
+No pases los templates de `audit-kit/templates/` directamente como evidencia. Deben copiarse fuera de git, reemplazarse con casos reales y revisarse antes de ejecutar el runner.
+La matriz recomendada es JSON para evitar ambigüedad de parsing; el runner mantiene soporte YAML simple para archivos existentes. Por compatibilidad con el modelo OWASP del kit, la matriz entregada por el auditor se conserva como `F2/authz-matrix.yml` aunque el archivo de entrada sea JSON.
+
 Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar con `--authorize-dast`. Para importacion automatica, definir `DD_API_TOKEN` o usar `--dd-token`.
 
 ## Flujo
 
 1. Compila la toolbox Docker si no existe.
 2. Ejecuta SAST, SCA, secretos, IaC, SBOM, TLS y DAST pasivo segun parametros.
-3. Muestra progreso numerado y resumen tecnico por herramienta.
-4. Conserva artefactos crudos en `$OUTPUT_DIR/reports/`.
-5. Escribe `$OUTPUT_DIR/reports/summary.json` con conteos saneados.
-6. Escribe `$OUTPUT_DIR/reports/coverage.json` y `$OUTPUT_DIR/reports/gates.json` con cobertura requerida y gates OWASP.
-7. Escribe `$OUTPUT_DIR/reports/evidence-manifest.json` con artefactos, autorizaciones, cobertura y gates.
-8. Imprime resumen de ejecucion con el estado de `coverage-gates`.
-9. Importa a DefectDojo si existe `--dd-token` o `DD_API_TOKEN`.
-10. Imprime checklist de controles no automatizables OWASP Top 10:2025.
-11. Solo abre DefectDojo si se usa `--open-defectdojo`.
+3. Si se proporciona `--authz-matrix`, valida la matriz A01 y escribe `F2/authz-matrix.yml` y `F2/authz-results.json`.
+4. Si se proporciona `--idor-review`, copia la revision manual a `F5/A01-idor-review.md`.
+5. Muestra progreso numerado y resumen tecnico por herramienta.
+6. Conserva artefactos crudos en `$OUTPUT_DIR/reports/`.
+7. Escribe `$OUTPUT_DIR/reports/summary.json` con conteos saneados.
+8. Escribe `$OUTPUT_DIR/reports/coverage.json` y `$OUTPUT_DIR/reports/gates.json` con cobertura requerida y gates OWASP.
+9. Escribe `$OUTPUT_DIR/reports/evidence-manifest.json` con artefactos, autorizaciones, cobertura y gates.
+10. Imprime resumen de ejecucion con el estado de `coverage-gates`.
+11. Importa a DefectDojo si existe `--dd-token` o `DD_API_TOKEN`.
+12. Imprime checklist de controles no automatizables OWASP Top 10:2025.
+13. Solo abre DefectDojo si se usa `--open-defectdojo`.
 
 ## Parametros
 
@@ -242,6 +263,8 @@ Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar 
 | `--product NAME` | Si | Nombre del producto para trazabilidad |
 | `--settings MODULE` | No | Modulo de settings Django para `manage.py check --deploy` |
 | `--django-command-prefix CMD` | No | Prefijo seguro antes de `manage.py`, sin operadores de shell; ejemplos: `poetry run python`, `.venv/bin/python` (defecto: `poetry run python`) |
+| `--authz-matrix PATH` | No | Matriz A01 rol/tenant/objeto con `expected`/`observed`; genera `F2/authz-matrix.yml` y `F2/authz-results.json` |
+| `--idor-review PATH` | No | Revision manual IDOR/A01 validada; se copia a `F5/A01-idor-review.md` |
 | `--target URL` | No | URL autorizada para DAST pasivo |
 | `--output DIR` | No | Directorio de salida (defecto: `audit-kit/runs/<slug>-<timestamp>`) |
 | `--dd-token TOKEN` | No | API token de DefectDojo para importacion automatica |
@@ -254,6 +277,7 @@ Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar 
 | `--run-trufflehog` | No | Habilita TruffleHog; puede producir evidencia con secretos |
 | `--coverage-threshold N` | No | Umbral minimo de evidencia requerida para gates OWASP (defecto: `80`) |
 | `--authorize-dast` | No | Confirma autorizacion explicita para DAST pasivo/no autenticado contra `--target` |
+| `--authorize-active-dast` | No | Confirma autorizacion explicita para DAST activo con mutaciones |
 | `--open-defectdojo` | No | Abre DefectDojo al finalizar si la importacion fue exitosa |
 | `--generate-only` | No | Solo crea estructura e inventario, sin scanners |
 | `--no-build` | No | No construye la imagen Docker |

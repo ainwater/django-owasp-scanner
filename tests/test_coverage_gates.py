@@ -70,7 +70,7 @@ class CoverageGatesTest(unittest.TestCase):
             reports = Path(tmp)
             write(reports / "F4" / "semgrep.json")
             write(reports / "F2" / "authz.yml")
-            write(reports / "F2" / "authz-results.json")
+            write(reports / "F2" / "authz-results.json", '{"status":"pass"}')
             write(reports / "status" / "django-check.status")
 
             result = coverage_gates.evaluate(reports, model(), threshold=100)
@@ -110,7 +110,7 @@ class CoverageGatesTest(unittest.TestCase):
             reports = Path(tmp)
             write(reports / "F4" / "semgrep.json")
             write(reports / "F2" / "authz.yml")
-            write(reports / "F2" / "authz-results.json")
+            write(reports / "F2" / "authz-results.json", '{"status":"pass"}')
             write(reports / "status" / "django-check.status")
 
             result = coverage_gates.evaluate(reports, model(), threshold=100)
@@ -119,6 +119,50 @@ class CoverageGatesTest(unittest.TestCase):
         self.assertEqual(a01_optional["id"], "zap")
         self.assertEqual(a01_optional["status"], "optional_missing")
         self.assertEqual(result["gates"]["status"], "pass")
+
+    def test_authz_matrix_result_failure_blocks_a01_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reports = Path(tmp)
+            write(reports / "F4" / "semgrep.json")
+            write(reports / "F2" / "authz.yml")
+            write(reports / "F2" / "authz-results.json", '{"status":"fail"}')
+            write(reports / "status" / "django-check.status")
+
+            result = coverage_gates.evaluate(reports, model(), threshold=100)
+
+        a01 = result["categories"][0]
+        self.assertEqual(a01["status"], "fail")
+        self.assertEqual(a01["missing_required"], [])
+        self.assertEqual(a01["failed_results"], ["authz"])
+        self.assertEqual(result["gates"]["status"], "fail")
+
+    def test_failed_result_artifact_blocks_gate_even_below_threshold(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reports = Path(tmp)
+            write(reports / "F4" / "semgrep.json")
+            write(reports / "F2" / "authz.yml")
+            write(reports / "F2" / "authz-results.json", '{"status":"fail"}')
+            write(reports / "status" / "django-check.status")
+
+            result = coverage_gates.evaluate(reports, model(), threshold=0)
+
+        self.assertEqual(result["categories"][0]["status"], "fail")
+        self.assertEqual(result["gates"]["status"], "fail")
+        self.assertEqual(result["gates"]["failed_categories"], ["A01"])
+
+    def test_empty_result_artifact_is_missing_not_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reports = Path(tmp)
+            write(reports / "F4" / "semgrep.json")
+            write(reports / "F2" / "authz.yml")
+            write(reports / "F2" / "authz-results.json", "")
+            write(reports / "status" / "django-check.status")
+
+            result = coverage_gates.evaluate(reports, model(), threshold=100)
+
+        a01 = result["categories"][0]
+        self.assertEqual(a01["missing_required"], ["authz"])
+        self.assertEqual(a01["failed_results"], [])
 
     def test_threshold_must_be_between_zero_and_one_hundred(self) -> None:
         with self.assertRaisesRegex(ValueError, "between 0 and 100"):

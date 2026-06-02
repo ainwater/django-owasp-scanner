@@ -39,16 +39,16 @@
     ]
   },
   "coverage": [
-    {"id": "A01", "name": "Broken Access Control", "status": "fail", "coverage_percent": 0, "required_present": 0, "required_total": 1, "missing_required": ["authz_matrix"], "automated": [], "manual": [], "required_manual_missing": ["authz_matrix"]},
-    {"id": "A02", "name": "Security Misconfiguration", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "automated": [], "manual": [], "required_manual_missing": []},
-    {"id": "A03", "name": "Software Supply Chain Failures", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "automated": [], "manual": [], "required_manual_missing": []},
-    {"id": "A04", "name": "Cryptographic Failures", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "automated": [], "manual": [], "required_manual_missing": []},
-    {"id": "A05", "name": "Injection", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "automated": [], "manual": [], "required_manual_missing": []},
-    {"id": "A06", "name": "Insecure Design", "status": "fail", "coverage_percent": 0, "required_present": 0, "required_total": 1, "missing_required": ["threat_model"], "automated": [], "manual": [], "required_manual_missing": ["threat_model"]},
-    {"id": "A07", "name": "Authentication Failures", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "automated": [], "manual": [], "required_manual_missing": []},
-    {"id": "A08", "name": "Software or Data Integrity Failures", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "automated": [], "manual": [], "required_manual_missing": []},
-    {"id": "A09", "name": "Security Logging and Alerting Failures", "status": "fail", "coverage_percent": 0, "required_present": 0, "required_total": 1, "missing_required": ["logging_matrix"], "automated": [], "manual": [], "required_manual_missing": ["logging_matrix"]},
-    {"id": "A10", "name": "Mishandling of Exceptional Conditions", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "automated": [], "manual": [], "required_manual_missing": []}
+    {"id": "A01", "name": "Broken Access Control", "status": "fail", "coverage_percent": 0, "required_present": 0, "required_total": 1, "missing_required": ["authz_matrix"], "failed_results": [], "automated": [], "manual": [], "required_manual_missing": ["authz_matrix"]},
+    {"id": "A02", "name": "Security Misconfiguration", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "failed_results": [], "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A03", "name": "Software Supply Chain Failures", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "failed_results": [], "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A04", "name": "Cryptographic Failures", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "failed_results": [], "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A05", "name": "Injection", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "failed_results": [], "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A06", "name": "Insecure Design", "status": "fail", "coverage_percent": 0, "required_present": 0, "required_total": 1, "missing_required": ["threat_model"], "failed_results": [], "automated": [], "manual": [], "required_manual_missing": ["threat_model"]},
+    {"id": "A07", "name": "Authentication Failures", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "failed_results": [], "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A08", "name": "Software or Data Integrity Failures", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "failed_results": [], "automated": [], "manual": [], "required_manual_missing": []},
+    {"id": "A09", "name": "Security Logging and Alerting Failures", "status": "fail", "coverage_percent": 0, "required_present": 0, "required_total": 1, "missing_required": ["logging_matrix"], "failed_results": [], "automated": [], "manual": [], "required_manual_missing": ["logging_matrix"]},
+    {"id": "A10", "name": "Mishandling of Exceptional Conditions", "status": "pass", "coverage_percent": 100, "required_present": 1, "required_total": 1, "missing_required": [], "failed_results": [], "automated": [], "manual": [], "required_manual_missing": []}
   ],
   "coverage_summary": {
     "coverage_percent": 70,

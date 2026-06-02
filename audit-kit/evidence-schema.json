@@ -77,7 +77,7 @@
     },
     "category": {
       "type": "object",
-      "required": ["id", "name", "status", "coverage_percent", "required_present", "required_total", "missing_required", "automated", "manual", "required_manual_missing"],
+      "required": ["id", "name", "status", "coverage_percent", "required_present", "required_total", "missing_required", "failed_results", "automated", "manual", "required_manual_missing"],
       "additionalProperties": false,
       "properties": {
         "id": {"type": "string", "pattern": "^A(0[1-9]|10)$"},
@@ -87,6 +87,7 @@
         "required_present": {"type": "integer", "minimum": 0},
         "required_total": {"type": "integer", "minimum": 0},
         "missing_required": {"type": "array", "items": {"type": "string"}},
+        "failed_results": {"type": "array", "items": {"type": "string"}},
         "automated": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
         "manual": {"type": "array", "items": {"$ref": "#/$defs/evidence"}},
         "required_manual_missing": {"type": "array", "items": {"type": "string"}}
