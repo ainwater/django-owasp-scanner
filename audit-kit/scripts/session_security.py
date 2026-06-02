@@ -20,6 +20,10 @@ REQUIRED_CONTROLS = [
 def load_review(path: Path) -> dict[str, Any]:
     try:
         data = json.loads(path.read_text())
+    except OSError as exc:
+        raise RuntimeError(f"Failed to load session review {path.name}: {exc.strerror}") from exc
+    except UnicodeError as exc:
+        raise RuntimeError(f"Failed to decode session review {path.name}: {exc.__class__.__name__}") from exc
     except Exception as exc:
         raise RuntimeError(f"Failed to load session review {path.name}: {exc}") from exc
     if not isinstance(data, dict):

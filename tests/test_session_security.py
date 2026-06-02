@@ -118,6 +118,17 @@ class SessionSecurityTest(unittest.TestCase):
         self.assertIn("session-review.json", str(raised.exception))
         self.assertNotIn(tmp, str(raised.exception))
 
+    def test_missing_file_error_uses_basename(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            private_dir = Path(tmp) / "private" / "client"
+            path = private_dir / "session-review.json"
+
+            with self.assertRaises(RuntimeError) as raised:
+                session_security.load_review(path)
+
+        self.assertIn("session-review.json", str(raised.exception))
+        self.assertNotIn(str(private_dir), str(raised.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
