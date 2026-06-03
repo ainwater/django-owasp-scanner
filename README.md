@@ -224,18 +224,21 @@ Matriz A01 de autorizacion e IDOR manual:
 # Usa los templates solo como referencia. Completa archivos privados con evidencia real.
 AUTHZ_MATRIX=/ruta/privada/authz-matrix.json
 IDOR_REVIEW=/ruta/privada/A01-idor-review.md
+SESSION_REVIEW=/ruta/privada/session-review.json
 
 ./audit-kit/scripts/run_owasp_audit.sh \
   --project "$AUDIT_PROJECT" \
   --product "$AUDIT_PRODUCT_NAME" \
   --authz-matrix "$AUTHZ_MATRIX" \
   --idor-review "$IDOR_REVIEW" \
+  --session-review "$SESSION_REVIEW" \
   --skip-dast \
   --skip-dd-import
 ```
 
 No pases los templates de `audit-kit/templates/` directamente como evidencia. Deben copiarse fuera de git, reemplazarse con casos reales y revisarse antes de ejecutar el runner.
 La matriz recomendada es JSON para evitar ambigüedad de parsing; el runner mantiene soporte YAML simple para archivos existentes. Por compatibilidad con el modelo OWASP del kit, la matriz entregada por el auditor se conserva como `F2/authz-matrix.yml` aunque el archivo de entrada sea JSON.
+La revision de sesion debe ser un JSON con `checks`; cada check requiere `id`, `status` (`pass`, `fail` o `not_applicable`) y `evidence`. Los controles requeridos son `logout_invalidates_session`, `session_rotation`, `enumeration_resistance`, `mfa_privileged` y `brute_force_protection`; `not_applicable` queda registrado, pero no satisface un control requerido.
 
 Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar con `--authorize-dast`. Para importacion automatica, definir `DD_API_TOKEN` o usar `--dd-token`.
 
@@ -245,15 +248,16 @@ Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar 
 2. Ejecuta SAST, SCA, secretos, IaC, SBOM, TLS y DAST pasivo segun parametros.
 3. Si se proporciona `--authz-matrix`, valida la matriz A01 y escribe `F2/authz-matrix.yml` y `F2/authz-results.json`.
 4. Si se proporciona `--idor-review`, copia la revision manual a `F5/A01-idor-review.md`.
-5. Muestra progreso numerado y resumen tecnico por herramienta.
-6. Conserva artefactos crudos en `$OUTPUT_DIR/reports/`.
-7. Escribe `$OUTPUT_DIR/reports/summary.json` con conteos saneados.
-8. Escribe `$OUTPUT_DIR/reports/coverage.json` y `$OUTPUT_DIR/reports/gates.json` con cobertura requerida y gates OWASP.
-9. Escribe `$OUTPUT_DIR/reports/evidence-manifest.json` con artefactos, autorizaciones, cobertura y gates.
-10. Imprime resumen de ejecucion con el estado de `coverage-gates`.
-11. Importa a DefectDojo si existe `--dd-token` o `DD_API_TOKEN`.
-12. Imprime checklist de controles no automatizables OWASP Top 10:2025.
-13. Solo abre DefectDojo si se usa `--open-defectdojo`.
+5. Si se proporciona `--session-review`, valida controles de logout, rotacion, enumeracion, MFA y brute force, y escribe `F2/session-security.json` y `F2/session-security-results.json`.
+6. Muestra progreso numerado y resumen tecnico por herramienta.
+7. Conserva artefactos crudos en `$OUTPUT_DIR/reports/`.
+8. Escribe `$OUTPUT_DIR/reports/summary.json` con conteos saneados.
+9. Escribe `$OUTPUT_DIR/reports/coverage.json` y `$OUTPUT_DIR/reports/gates.json` con cobertura requerida y gates OWASP.
+10. Escribe `$OUTPUT_DIR/reports/evidence-manifest.json` con artefactos, autorizaciones, cobertura y gates.
+11. Imprime resumen de ejecucion con el estado de `coverage-gates`.
+12. Importa a DefectDojo si existe `--dd-token` o `DD_API_TOKEN`.
+13. Imprime checklist de controles no automatizables OWASP Top 10:2025.
+14. Solo abre DefectDojo si se usa `--open-defectdojo`.
 
 ## Parametros
 
@@ -265,6 +269,7 @@ Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar 
 | `--django-command-prefix CMD` | No | Prefijo seguro antes de `manage.py`, sin operadores de shell; ejemplos: `poetry run python`, `.venv/bin/python` (defecto: `poetry run python`) |
 | `--authz-matrix PATH` | No | Matriz A01 rol/tenant/objeto con `expected`/`observed`; genera `F2/authz-matrix.yml` y `F2/authz-results.json` |
 | `--idor-review PATH` | No | Revision manual IDOR/A01 validada; se copia a `F5/A01-idor-review.md` |
+| `--session-review PATH` | No | Revision JSON de logout, rotacion, enumeracion, MFA y brute force; genera `F2/session-security.json` y `F2/session-security-results.json` |
 | `--target URL` | No | URL autorizada para DAST pasivo |
 | `--output DIR` | No | Directorio de salida (defecto: `audit-kit/runs/<slug>-<timestamp>`) |
 | `--dd-token TOKEN` | No | API token de DefectDojo para importacion automatica |

@@ -13,6 +13,7 @@ SETTINGS_MODULE="${AUDIT_DJANGO_SETTINGS_MODULE:-}"
 DJANGO_PREFIX="${AUDIT_DJANGO_COMMAND_PREFIX:-poetry run python}"
 AUTHZ_MATRIX="${AUDIT_AUTHZ_MATRIX:-}"
 IDOR_REVIEW="${AUDIT_IDOR_REVIEW:-}"
+SESSION_REVIEW="${AUDIT_SESSION_REVIEW:-}"
 TARGET_URL="${AUDIT_TARGET_URL:-}"
 OUTPUT_DIR="${AUDIT_OUTPUT_DIR:-}"
 RUN_DAST="${AUDIT_RUN_DAST:-true}"
@@ -51,6 +52,7 @@ Opcionales:
   --django-command-prefix CMD  Prefijo seguro antes de manage.py, sin operadores de shell
   --authz-matrix PATH          Matriz A01 rol/tenant/objeto con resultados esperados/observados
   --idor-review PATH           Revision manual IDOR/A01 validada por el auditor
+  --session-review PATH        Revision JSON de logout, rotacion, enumeracion, MFA y brute force
   --target URL                 URL staging/prod autorizada para DAST pasivo
   --output DIR                 Directorio de salida (defecto: audit-kit/runs/<slug>-<timestamp>)
   --image NAME                 Imagen Docker toolbox (defecto: owasp-audit:latest)
@@ -96,6 +98,7 @@ while [[ $# -gt 0 ]]; do
         --django-command-prefix) DJANGO_PREFIX="$2"; shift 2 ;;
         --authz-matrix) AUTHZ_MATRIX="$2"; shift 2 ;;
         --idor-review) IDOR_REVIEW="$2"; shift 2 ;;
+        --session-review) SESSION_REVIEW="$2"; shift 2 ;;
         --target) TARGET_URL="$2"; shift 2 ;;
         --output) OUTPUT_DIR="$2"; shift 2 ;;
         --image) IMAGE="$2"; shift 2 ;;
@@ -133,6 +136,12 @@ if [[ -n "$IDOR_REVIEW" ]]; then
     IDOR_REVIEW="$(cd "$(dirname "$IDOR_REVIEW")" && pwd -P)/$(basename "$IDOR_REVIEW")"
     IDOR_REVIEW_REAL="$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$IDOR_REVIEW")"
     case "$IDOR_REVIEW_REAL" in "${KIT_DIR}/templates/"*) die "no uses templates del audit kit como evidencia: $IDOR_REVIEW" ;; esac
+fi
+if [[ -n "$SESSION_REVIEW" ]]; then
+    [[ -f "$SESSION_REVIEW" ]] || die "la revisión de sesión no existe: $SESSION_REVIEW"
+    SESSION_REVIEW="$(cd "$(dirname "$SESSION_REVIEW")" && pwd -P)/$(basename "$SESSION_REVIEW")"
+    SESSION_REVIEW_REAL="$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$SESSION_REVIEW")"
+    case "$SESSION_REVIEW_REAL" in "${KIT_DIR}/templates/"*) die "no uses templates del audit kit como evidencia: $SESSION_REVIEW" ;; esac
 fi
 [[ "$COVERAGE_THRESHOLD" =~ ^[0-9]+$ ]] || die "--coverage-threshold debe ser entero entre 0 y 100"
 COVERAGE_THRESHOLD_NUM=$((10#$COVERAGE_THRESHOLD))
@@ -378,12 +387,24 @@ PY
     local authz_status="MISSING" authz_hint="add --authz-matrix"
     if [[ -n "$AUTHZ_MATRIX" && "$output_ready" == READY ]]; then authz_status="READY"; authz_hint="-";
     elif [[ "$output_ready" == READY ]]; then authz_status="CONFIGURING"; fi
-    add_item "4 A01 Authz Matrix" "$authz_status" "$authz_hint"
+    local pr4_status="MISSING" pr4_hint="add --authz-matrix, --idor-review, --session-review"
 
     local idor_status="MISSING" idor_hint="add --idor-review"
     if [[ -n "$IDOR_REVIEW" && "$output_ready" == READY ]]; then idor_status="READY"; idor_hint="-";
     elif [[ "$output_ready" == READY ]]; then idor_status="CONFIGURING"; fi
-    add_item "5 A01 IDOR Review" "$idor_status" "$idor_hint"
+
+    local session_status="MISSING" session_hint="add --session-review"
+    if [[ -n "$SESSION_REVIEW" && "$output_ready" == READY ]]; then session_status="READY"; session_hint="-";
+    elif [[ "$output_ready" == READY ]]; then session_status="CONFIGURING"; fi
+    if [[ "$authz_status" == READY && "$idor_status" == READY && "$session_status" == READY ]]; then
+        pr4_status="READY"; pr4_hint="-"
+    elif [[ "$output_ready" == READY ]]; then
+        pr4_status="CONFIGURING"
+    fi
+    add_item "4 Authz & Session" "$pr4_status" "$pr4_hint"
+    add_item "4a A01 Authz Matrix" "$authz_status" "$authz_hint"
+    add_item "4b A01 IDOR Review" "$idor_status" "$idor_hint"
+    add_item "4c A01 Session Security" "$session_status" "$session_hint"
 
     local dast_status="MISSING" dast_hint="set --target and --authorize-dast"
     if [[ "$dast_target" == READY && "$dast_auth" == READY ]]; then
@@ -391,42 +412,30 @@ PY
     elif [[ "$dast_target" == READY ]]; then
         dast_status="CONFIGURING"; dast_hint="add --authorize-dast"
     fi
-    add_item "5 Auth DAST + Fuzzing" "$dast_status" "$dast_hint"
-
-    local authsess_status="MISSING" authsess_hint="needs manage.py + --settings"
-    if [[ "$manage_py" == READY && "$settings_arg" == READY ]]; then authsess_status="CONFIGURING"; authsess_hint="add session/MFA tests"; fi
-    add_item "6 Auth & Session Tests" "$authsess_status" "$authsess_hint"
+    add_item "5 DAST Auth & API Fuzzing" "$dast_status" "$dast_hint"
 
     local headers_status="$dast_status" headers_hint="$dast_hint"
-    add_item "7 Headers & Web Policies" "$headers_status" "$headers_hint"
+    add_item "6 Headers & Web Policies" "$headers_status" "$headers_hint"
 
-    add_item "8 Logging & Alerting" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add logging policy review"
+    add_item "7 Logging & Resilience" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add logs/errors evidence"
 
-    add_item "9 Exceptions & Resilience" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add error/timeout checks"
-
-    add_item "10 Threat Model & Abuse" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add threat-model docs"
-
-    add_item "11 Upload Integrity" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add upload validation checklist"
+    add_item "8 Threat Model & Uploads" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add threat/upload evidence"
 
     local supply_status="MISSING" supply_hint="docker unavailable"
     if [[ "$docker_ready" == READY ]]; then
         if [[ "$image_ready" == READY ]]; then supply_status="READY"; supply_hint="-"
         else supply_status="CONFIGURING"; supply_hint="build image $IMAGE"; fi
     fi
-    add_item "12 Supply Chain" "$supply_status" "$supply_hint"
-
-    add_item "13 Toolbox & DD Hardening" "$( [[ -f "${ROOT_DIR}/Dockerfile" ]] && echo CONFIGURING || echo MISSING )" "check Dockerfile for non-root/healthcheck"
-
-    add_item "14 SARIF/JUnit + CI" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add CI templates"
+    add_item "9 Supply Chain & DD" "$supply_status" "$supply_hint"
 
     local dd_status="MISSING" dd_hint="import_defectdojo.py missing"
     if [[ -f "${SCRIPT_DIR}/import_defectdojo.py" ]]; then
         if [[ -n "$DD_API_TOKEN" ]]; then dd_status="READY"; dd_hint="-"
         else dd_status="CONFIGURING"; dd_hint="set DD_API_TOKEN or --dd-token"; fi
     fi
-    add_item "15 Normalized DD Import" "$dd_status" "$dd_hint"
+    add_item "9a DefectDojo Import" "$dd_status" "$dd_hint"
 
-    add_item "16 Final Audit Package" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add final report generator"
+    add_item "10 Final Report" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add final report generator"
 
     plan+=("tool-versions (toolbox)")
     plan+=("bandit (toolbox)")
@@ -456,6 +465,9 @@ PY
     fi
     if [[ -n "$IDOR_REVIEW" ]]; then
         plan+=("idor-review (host)")
+    fi
+    if [[ -n "$SESSION_REVIEW" ]]; then
+        plan+=("session-security (host)")
     fi
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
         plan+=("http-headers (host)")
@@ -516,12 +528,14 @@ if [[ "$GENERATE_ONLY" == "true" ]]; then
     if should_run_django; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     if [[ -n "$AUTHZ_MATRIX" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     if [[ -n "$IDOR_REVIEW" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
+    if [[ -n "$SESSION_REVIEW" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
 else
     TOOL_TOTAL=13
     if [[ "$RUN_TRUFFLEHOG" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     if should_run_django; then TOOL_TOTAL=$((TOOL_TOTAL + 5)); fi
     if [[ -n "$AUTHZ_MATRIX" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     if [[ -n "$IDOR_REVIEW" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
+    if [[ -n "$SESSION_REVIEW" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
         TOOL_TOTAL=$((TOOL_TOTAL + 3))
         if [[ "$RUN_ZAP" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
@@ -684,6 +698,22 @@ else
     write_status "idor-review" "skipped" "0" "omitido; sin --idor-review"
 fi
 
+session_rc="0"
+if [[ -n "$SESSION_REVIEW" ]]; then
+    Q_SESSION_REVIEW="$(printf '%q' "$SESSION_REVIEW")"
+    Q_REPORTS="$(printf '%q' "$REPORTS_DIR")"
+    Q_SESSION_SCRIPT="$(printf '%q' "${SCRIPT_DIR}/session_security.py")"
+    session_command="python3 ${Q_SESSION_SCRIPT} ${Q_SESSION_REVIEW} ${Q_REPORTS}"
+    progress "session-security"
+    bash -lc "$session_command" > "${STATUS_DIR}/session-security.log" 2>&1
+    session_rc="$?"
+    progress_done "$session_rc"
+    write_status "session-security" "host" "$session_rc" "python3 session_security.py $(basename "$SESSION_REVIEW") reports"
+else
+    printf '  session-security: omitido (sin --session-review)\n'
+    write_status "session-security" "skipped" "0" "omitido; sin --session-review"
+fi
+
 python3 "${SCRIPT_DIR}/summarize_artifacts.py" "$REPORTS_DIR" 2> "${STATUS_DIR}/summarize-artifacts.log"
 summarize_rc=$?
 write_status "summarize-artifacts" "host" "$summarize_rc" "summarize_artifacts.py $REPORTS_DIR"
@@ -699,6 +729,9 @@ if [[ "$final_rc" == "0" && "$authz_rc" != "0" ]]; then
 fi
 if [[ "$final_rc" == "0" && "$idor_rc" != "0" ]]; then
     final_rc="$idor_rc"
+fi
+if [[ "$final_rc" == "0" && "$session_rc" != "0" ]]; then
+    final_rc="$session_rc"
 fi
 if [[ "$final_rc" == "0" && "$summarize_rc" != "0" ]]; then
     final_rc="$summarize_rc"

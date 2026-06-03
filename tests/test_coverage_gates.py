@@ -32,7 +32,8 @@ def model() -> dict:
                     {"id": "zap", "artifacts": ["F6/zap.xml"], "required": False},
                 ],
                 "manual_evidence": [
-                    {"id": "authz", "artifacts": ["F2/authz.yml", "F2/authz-results.json"], "required": True}
+                    {"id": "authz", "artifacts": ["F2/authz.yml", "F2/authz-results.json"], "required": True},
+                    {"id": "session_security", "artifacts": ["F2/session-security.json", "F2/session-security-results.json"], "required": True},
                 ],
             },
             {
@@ -60,9 +61,9 @@ class CoverageGatesTest(unittest.TestCase):
         self.assertEqual(a01["id"], "A01")
         self.assertEqual(a01["status"], "fail")
         self.assertEqual(a01["required_present"], 1)
-        self.assertEqual(a01["required_total"], 2)
-        self.assertEqual(a01["coverage_percent"], 50)
-        self.assertEqual(a01["missing_required"], ["authz"])
+        self.assertEqual(a01["required_total"], 3)
+        self.assertEqual(a01["coverage_percent"], 33)
+        self.assertEqual(a01["missing_required"], ["authz", "session_security"])
         self.assertEqual(result["gates"]["status"], "fail")
 
     def test_global_gate_passes_when_required_evidence_meets_threshold(self) -> None:
@@ -71,13 +72,15 @@ class CoverageGatesTest(unittest.TestCase):
             write(reports / "F4" / "semgrep.json")
             write(reports / "F2" / "authz.yml")
             write(reports / "F2" / "authz-results.json", '{"status":"pass"}')
+            write(reports / "F2" / "session-security.json")
+            write(reports / "F2" / "session-security-results.json", '{"status":"pass"}')
             write(reports / "status" / "django-check.status")
 
             result = coverage_gates.evaluate(reports, model(), threshold=100)
 
         self.assertEqual([category["status"] for category in result["categories"]], ["pass", "pass"])
-        self.assertEqual(result["summary"]["required_present"], 3)
-        self.assertEqual(result["summary"]["required_total"], 3)
+        self.assertEqual(result["summary"]["required_present"], 4)
+        self.assertEqual(result["summary"]["required_total"], 4)
         self.assertEqual(result["summary"]["coverage_percent"], 100)
         self.assertEqual(
             result["gates"],
@@ -95,10 +98,10 @@ class CoverageGatesTest(unittest.TestCase):
             write(reports / "F4" / "semgrep.json")
             write(reports / "status" / "django-check.status")
 
-            result = coverage_gates.evaluate(reports, model(), threshold=50)
+            result = coverage_gates.evaluate(reports, model(), threshold=30)
 
         self.assertEqual(result["categories"][0]["status"], "pass")
-        self.assertEqual(result["categories"][0]["missing_required"], ["authz"])
+        self.assertEqual(result["categories"][0]["missing_required"], ["authz", "session_security"])
         self.assertEqual(result["gates"]["status"], "pass")
 
     def test_percent_uses_floor_integer_math(self) -> None:
@@ -111,6 +114,8 @@ class CoverageGatesTest(unittest.TestCase):
             write(reports / "F4" / "semgrep.json")
             write(reports / "F2" / "authz.yml")
             write(reports / "F2" / "authz-results.json", '{"status":"pass"}')
+            write(reports / "F2" / "session-security.json")
+            write(reports / "F2" / "session-security-results.json", '{"status":"pass"}')
             write(reports / "status" / "django-check.status")
 
             result = coverage_gates.evaluate(reports, model(), threshold=100)
@@ -126,6 +131,8 @@ class CoverageGatesTest(unittest.TestCase):
             write(reports / "F4" / "semgrep.json")
             write(reports / "F2" / "authz.yml")
             write(reports / "F2" / "authz-results.json", '{"status":"fail"}')
+            write(reports / "F2" / "session-security.json")
+            write(reports / "F2" / "session-security-results.json", '{"status":"pass"}')
             write(reports / "status" / "django-check.status")
 
             result = coverage_gates.evaluate(reports, model(), threshold=100)
@@ -142,6 +149,8 @@ class CoverageGatesTest(unittest.TestCase):
             write(reports / "F4" / "semgrep.json")
             write(reports / "F2" / "authz.yml")
             write(reports / "F2" / "authz-results.json", '{"status":"fail"}')
+            write(reports / "F2" / "session-security.json")
+            write(reports / "F2" / "session-security-results.json", '{"status":"pass"}')
             write(reports / "status" / "django-check.status")
 
             result = coverage_gates.evaluate(reports, model(), threshold=0)
@@ -156,6 +165,8 @@ class CoverageGatesTest(unittest.TestCase):
             write(reports / "F4" / "semgrep.json")
             write(reports / "F2" / "authz.yml")
             write(reports / "F2" / "authz-results.json", "")
+            write(reports / "F2" / "session-security.json")
+            write(reports / "F2" / "session-security-results.json", '{"status":"pass"}')
             write(reports / "status" / "django-check.status")
 
             result = coverage_gates.evaluate(reports, model(), threshold=100)
@@ -163,6 +174,22 @@ class CoverageGatesTest(unittest.TestCase):
         a01 = result["categories"][0]
         self.assertEqual(a01["missing_required"], ["authz"])
         self.assertEqual(a01["failed_results"], [])
+
+    def test_session_security_result_failure_blocks_a01_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reports = Path(tmp)
+            write(reports / "F4" / "semgrep.json")
+            write(reports / "F2" / "authz.yml")
+            write(reports / "F2" / "authz-results.json", '{"status":"pass"}')
+            write(reports / "F2" / "session-security.json")
+            write(reports / "F2" / "session-security-results.json", '{"status":"fail"}')
+            write(reports / "status" / "django-check.status")
+
+            result = coverage_gates.evaluate(reports, model(), threshold=0)
+
+        self.assertEqual(result["categories"][0]["status"], "fail")
+        self.assertEqual(result["categories"][0]["failed_results"], ["session_security"])
+        self.assertEqual(result["gates"]["failed_categories"], ["A01"])
 
     def test_threshold_must_be_between_zero_and_one_hundred(self) -> None:
         with self.assertRaisesRegex(ValueError, "between 0 and 100"):
