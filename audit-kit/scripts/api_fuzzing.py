@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import argparse
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -79,11 +80,17 @@ def normalize_authorization(review: dict[str, Any]) -> dict[str, Any]:
         raise RuntimeError("authorization.active_dast must be boolean")
     if not isinstance(header_name, str):
         raise RuntimeError("authorization.header_name must be a string")
+    if not dast:
+        raise RuntimeError("authorization.dast must be true")
     return {
         "dast": dast,
         "active_dast": active_dast,
         "header_name": header_name.strip(),
     }
+
+
+def review_requires_active_dast(review: dict[str, Any]) -> bool:
+    return normalize_authorization(review)["active_dast"]
 
 
 def evaluate(review: dict[str, Any], source: Path) -> dict[str, Any]:
@@ -130,13 +137,27 @@ def run(review_path: Path, reports: Path) -> int:
     return 0 if result["status"] == "pass" else 1
 
 
-def main() -> None:
-    if len(sys.argv) != 3:
+def main_for_args(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(add_help=False)
+    parser.add_argument("--requires-active-dast", dest="requires_active_dast")
+    parser.add_argument("args", nargs="*")
+    parsed = parser.parse_args(argv)
+    if parsed.requires_active_dast:
+        try:
+            review = load_review(Path(parsed.requires_active_dast))
+        except RuntimeError as exc:
+            raise SystemExit(2) from exc
+        return 0 if review_requires_active_dast(review) else 1
+    if len(parsed.args) != 2:
         raise SystemExit("usage: api_fuzzing.py REVIEW_JSON REPORTS_DIR")
     try:
-        raise SystemExit(run(Path(sys.argv[1]), Path(sys.argv[2])))
+        return run(Path(parsed.args[0]), Path(parsed.args[1]))
     except RuntimeError as exc:
         raise SystemExit(str(exc)) from exc
+
+
+def main() -> None:
+    raise SystemExit(main_for_args(sys.argv[1:]))
 
 
 if __name__ == "__main__":

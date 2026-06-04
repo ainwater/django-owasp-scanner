@@ -301,7 +301,7 @@ Este flujo normaliza evidencia (`F6/api-fuzzing*.json`) desde la revisión priva
 | `--auth-header-name NAME` | No | Nombre del header de autenticacion (ej. `Authorization`) |
 | `--auth-header-value VALUE` | No | Valor privado del header de autenticacion (redactado en status) |
 | `--api-fuzzing-review PATH` | No | Revision JSON privada de API fuzzing; genera `F6/api-fuzzing.json` y `F6/api-fuzzing-results.json` |
-| `--schemathesis-max-examples N` | No | Activa ejemplos mutados si N > 0; requiere `--authorize-active-dast` |
+| `--schemathesis-max-examples N` | No | Activa ejemplos mutados si N > 0; requiere `--authorize-dast` y `--authorize-active-dast` |
 | `--output DIR` | No | Directorio de salida (defecto: `audit-kit/runs/<slug>-<timestamp>`) |
 | `--dd-token TOKEN` | No | API token de DefectDojo para importacion automatica |
 | `--dd-url URL` | No | URL de DefectDojo (defecto: `http://localhost:8080`) |

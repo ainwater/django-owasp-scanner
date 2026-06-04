@@ -96,6 +96,13 @@ class ApiFuzzingTest(unittest.TestCase):
 
         self.assertEqual(result["authorization"], {"dast": True, "active_dast": False, "header_name": "Authorization"})
 
+    def test_authorization_dast_must_be_true_for_accepted_review(self) -> None:
+        review = passing_review()
+        review["authorization"] = {"dast": False, "active_dast": False, "header_name": "Authorization"}
+
+        with self.assertRaisesRegex(RuntimeError, r"authorization\.dast must be true"):
+            api_fuzzing.evaluate(review, Path("openapi.json"))
+
     def test_passing_review_generates_pass_results(self) -> None:
         result = api_fuzzing.evaluate(passing_review(), Path("review.json"))
 
@@ -161,3 +168,29 @@ class ApiFuzzingTest(unittest.TestCase):
         self.assertEqual(results["findings"], [])
         self.assertEqual(evidence["authorization"], results["authorization"])
         self.assertEqual(results["status"], "pass")
+
+    def test_cli_reports_active_dast_requirement(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            review = Path(tmp) / "review.json"
+            payload = passing_review()
+            payload["authorization"]["active_dast"] = True
+            review.write_text(json.dumps(payload))
+
+            result = api_fuzzing.main_for_args(["--requires-active-dast", str(review)])
+
+            payload["authorization"]["active_dast"] = False
+            review.write_text(json.dumps(payload))
+            result_without_active = api_fuzzing.main_for_args(["--requires-active-dast", str(review)])
+
+        self.assertEqual(result, 0)
+        self.assertEqual(result_without_active, 1)
+
+    def test_cli_reports_invalid_review_separately_for_active_dast_check(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            review = Path(tmp) / "review.json"
+            review.write_text(json.dumps({"checks": []}))
+
+            with self.assertRaises(SystemExit) as raised:
+                api_fuzzing.main_for_args(["--requires-active-dast", str(review)])
+
+        self.assertEqual(raised.exception.code, 2)

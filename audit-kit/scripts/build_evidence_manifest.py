@@ -74,6 +74,14 @@ def relative_to_root(path_str: str) -> str:
         return path.name
 
 
+def load_api_fuzzing_authorization(reports: Path) -> dict[str, Any]:
+    results = load_json(reports / "F6" / "api-fuzzing-results.json")
+    authorization = results.get("authorization", {})
+    if not isinstance(authorization, dict):
+        return {}
+    return authorization
+
+
 def build(reports: Path) -> dict[str, Any]:
     metadata = load_json(reports / "metadata.json")
     model = load_json(MODEL, required=True)
@@ -82,7 +90,14 @@ def build(reports: Path) -> dict[str, Any]:
     coverage_gates.write_outputs(reports, coverage_result)
     product = os.getenv("AUDIT_PRODUCT_NAME") or metadata.get("product") or "Application"
     timestamp = metadata.get("timestamp", "")
-    dast = bool(metadata.get("target_url")) and is_true(os.getenv("AUDIT_DAST_AUTHORIZED", "false"))
+    api_fuzzing_authorization = load_api_fuzzing_authorization(reports)
+    dast = is_true(os.getenv("AUDIT_DAST_AUTHORIZED", "false")) and (
+        bool(metadata.get("target_url")) or bool(api_fuzzing_authorization.get("dast", False))
+    )
+    active_dast = is_true(os.getenv("AUDIT_ACTIVE_DAST_AUTHORIZED", "false")) and bool(
+        api_fuzzing_authorization.get("active_dast", False)
+    )
+    has_target = bool(metadata.get("target_url"))
     return {
         "schema_version": "1.0",
         "owasp_version": model.get("version", "OWASP Top 10:2025"),
@@ -101,9 +116,9 @@ def build(reports: Path) -> dict[str, Any]:
         },
         "authorization": {
             "dast": dast,
-            "zap": dast and is_true(os.getenv("AUDIT_RUN_ZAP", "true")),
-            "nuclei": dast and is_true(os.getenv("AUDIT_RUN_NUCLEI", "true")),
-            "active_dast": dast and is_true(os.getenv("AUDIT_ACTIVE_DAST_AUTHORIZED", "false")),
+            "zap": has_target and dast and is_true(os.getenv("AUDIT_RUN_ZAP", "true")),
+            "nuclei": has_target and dast and is_true(os.getenv("AUDIT_RUN_NUCLEI", "true")),
+            "active_dast": active_dast,
             "trufflehog": is_true(os.getenv("AUDIT_RUN_TRUFFLEHOG", "false")),
             "defectdojo_import": bool(os.getenv("DD_API_TOKEN")) and not is_true(os.getenv("SKIP_DD_IMPORT", "false")),
         },

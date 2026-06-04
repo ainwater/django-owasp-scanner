@@ -6,73 +6,7 @@ import unittest
 import json
 from pathlib import Path
 
-
-ROOT = Path(__file__).resolve().parents[1]
-RUNNER = ROOT / "audit-kit" / "scripts" / "run_owasp_audit.sh"
-
-
-def write(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content)
-
-
-def write_api_fuzzing_review(path: Path, status: str = "pass") -> None:
-    checks = [
-        {"id": "get-users", "status": status, "method": "GET", "path": "/users", "evidence": "200 OK"},
-        {"id": "get-me", "status": status, "method": "GET", "path": "/me", "evidence": "200 OK"},
-    ]
-    payload = {
-        "source": "openapi.json",
-        "schema": "openapi3",
-        "target": "https://staging.example.com/api",
-        "authorization": {"dast": True, "active_dast": False, "header_name": "Authorization"},
-        "summary": {"total": 2, "passed": 2 if status == "pass" else 0, "failed": 0 if status == "pass" else 2},
-        "checks": checks,
-        "findings": [] if status == "pass" else [{"id": "get-users", "severity": "medium", "evidence": "500 on invalid schema"}],
-    }
-    write(path, json.dumps(payload))
-
-
-def build_pr5_api_fuzzing_command(
-    *,
-    project: Path,
-    spec: Path,
-    authorize_dast: bool = False,
-    authorize_active_dast: bool = False,
-    api_fuzzing_review: Path | None = None,
-    extra_args: list[str] | None = None,
-) -> list[str]:
-    command = [
-        "bash",
-        str(RUNNER),
-        "--project",
-        str(project),
-        "--product",
-        "Test",
-        "--target",
-        "https://staging.example.com",
-    ]
-    if authorize_dast:
-        command.append("--authorize-dast")
-    if authorize_active_dast:
-        command.append("--authorize-active-dast")
-    command.extend(
-        [
-            "--openapi-spec",
-            str(spec),
-            "--api-base-url",
-            "https://staging.example.com/api",
-            "--auth-header-name",
-            "Authorization",
-            "--auth-header-value",
-            "Bearer secret",
-        ]
-    )
-    if api_fuzzing_review is not None:
-        command.extend(["--api-fuzzing-review", str(api_fuzzing_review)])
-    if extra_args:
-        command.extend(extra_args)
-    return command
+from tests.runner_test_helpers import RUNNER, ROOT, build_pr5_api_fuzzing_command, write, write_api_fuzzing_review, write_session_review
 
 
 class RunOwaspAuditPr5Test(unittest.TestCase):
@@ -126,6 +60,31 @@ class RunOwaspAuditPr5Test(unittest.TestCase):
         self.assertTrue(evidence_exists)
         self.assertTrue(results_exists)
 
+    def test_generate_only_manifest_records_pr5_authorization_without_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = root / "api-review.json"
+            spec = root / "openapi.json"
+            output = root / "out"
+            write_api_fuzzing_review(review)
+            write(spec, '{"openapi":"3.0.0","paths":{}}')
+
+            command = build_pr5_api_fuzzing_command(
+                project=ROOT,
+                spec=spec,
+                authorize_dast=True,
+                api_fuzzing_review=review,
+                extra_args=["--output", str(output), "--generate-only", "--skip-dd-import", "--coverage-threshold", "0"],
+            )
+            target_index = command.index("--target")
+            del command[target_index : target_index + 2]
+            result = subprocess.run(command, capture_output=True, text=True, check=False)
+            manifest = json.loads((output / "reports" / "evidence-manifest.json").read_text())
+
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue(manifest["authorization"]["dast"])
+        self.assertFalse(manifest["authorization"]["active_dast"])
+
     def test_api_fuzzing_requires_authorize_dast(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             spec = Path(tmp) / "openapi.json"
@@ -154,6 +113,41 @@ class RunOwaspAuditPr5Test(unittest.TestCase):
                     spec=spec,
                     authorize_dast=True,
                     extra_args=["--schemathesis-max-examples", "10", "--generate-only", "--output", tmp],
+                ),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("authorize-active-dast", result.stderr)
+
+    def test_api_fuzzing_review_declaring_active_dast_requires_authorize_active_dast(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = root / "api-review.json"
+            spec = root / "openapi.json"
+            payload = {
+                **json.loads(json.dumps({
+                    "source": "openapi.json",
+                    "schema": "openapi3",
+                    "target": "https://staging.example.com/api",
+                    "authorization": {"dast": True, "active_dast": True, "header_name": "Authorization"},
+                    "summary": {"total": 1, "passed": 1, "failed": 0},
+                    "checks": [{"id": "get-users", "status": "pass", "method": "GET", "path": "/users", "evidence": "200 OK"}],
+                    "findings": [],
+                }))
+            }
+            write(review, json.dumps(payload))
+            write(spec, '{"openapi":"3.0.0","paths":{}}')
+
+            result = subprocess.run(
+                build_pr5_api_fuzzing_command(
+                    project=ROOT,
+                    spec=spec,
+                    authorize_dast=True,
+                    api_fuzzing_review=review,
+                    extra_args=["--generate-only", "--output", str(root / "out"), "--skip-dd-import", "--coverage-threshold", "0"],
                 ),
                 capture_output=True,
                 text=True,
@@ -300,6 +294,122 @@ class RunOwaspAuditPr5Test(unittest.TestCase):
         self.assertTrue(status_exists)
         self.assertNotIn("api-review\nexit_code=999.json", status)
         self.assertNotIn("\nexit_code=999", status)
+
+    def test_api_fuzzing_accepts_review_filename_starting_with_dash(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = root / "-api-review.json"
+            spec = root / "openapi.json"
+            output = root / "out"
+            write_api_fuzzing_review(review)
+            write(spec, '{"openapi":"3.0.0","paths":{}}')
+
+            result = subprocess.run(
+                build_pr5_api_fuzzing_command(
+                    project=ROOT,
+                    spec=spec,
+                    authorize_dast=True,
+                    api_fuzzing_review=review,
+                    extra_args=["--output", str(output), "--generate-only", "--skip-dd-import", "--coverage-threshold", "0"],
+                ),
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            status = (output / "reports" / "status" / "api-fuzzing.status").read_text()
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("api-review.json", status)
+
+    def test_session_review_accepts_filename_starting_with_dash(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = root / "-session-review.json"
+            output = root / "out"
+            write_session_review(review)
+
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--session-review",
+                    str(review),
+                    "--output",
+                    str(output),
+                    "--generate-only",
+                    "--skip-dd-import",
+                    "--coverage-threshold",
+                    "0",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            status = (output / "reports" / "status" / "session-security.status").read_text()
+
+        self.assertEqual(result.returncode, 0)
+        self.assertIn("session-review.json", status)
+
+    def test_api_fuzzing_accepts_relative_review_filename_starting_with_dash(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = root / "-api-review.json"
+            spec = root / "openapi.json"
+            output = root / "out"
+            write_api_fuzzing_review(review)
+            write(spec, '{"openapi":"3.0.0","paths":{}}')
+
+            result = subprocess.run(
+                build_pr5_api_fuzzing_command(
+                    project=ROOT,
+                    spec=Path("openapi.json"),
+                    authorize_dast=True,
+                    api_fuzzing_review=Path("-api-review.json"),
+                    extra_args=["--output", str(output), "--generate-only", "--skip-dd-import", "--coverage-threshold", "0"],
+                ),
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=root,
+            )
+
+        self.assertEqual(result.returncode, 0)
+
+    def test_session_review_accepts_relative_filename_starting_with_dash(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = root / "-session-review.json"
+            output = root / "out"
+            write_session_review(review)
+
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--session-review",
+                    "-session-review.json",
+                    "--output",
+                    str(output),
+                    "--generate-only",
+                    "--skip-dd-import",
+                    "--coverage-threshold",
+                    "0",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+                cwd=root,
+            )
+
+        self.assertEqual(result.returncode, 0)
 
 
 if __name__ == "__main__":

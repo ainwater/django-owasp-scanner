@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 KIT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
 ROOT_DIR="$(cd "${KIT_DIR}/.." && pwd -P)"
 SEMGREP_RULES="audit-kit/semgrep/django-drf.yml"
+source "${SCRIPT_DIR}/manual_evidence.sh"
 
 IMAGE="${AUDIT_DOCKER_IMAGE:-owasp-audit:latest}"
 PROJECT="${AUDIT_PROJECT:-}"
@@ -106,20 +107,12 @@ resolve_evidence_path() {
     local raw_path="$1" missing_message="$2"
     [[ -f "$raw_path" ]] || die "${missing_message}: $raw_path"
     local normalized_path resolved_path
-    normalized_path="$(cd "$(dirname "$raw_path")" && pwd -P)/$(basename "$raw_path")"
+    normalized_path="$(cd "$(dirname -- "$raw_path")" && pwd -P)/$(basename -- "$raw_path")"
     resolved_path="$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$normalized_path")"
     case "$resolved_path" in
         "${KIT_DIR}/templates/"*) die "no uses templates del audit kit como evidencia: $normalized_path" ;;
     esac
     printf '%s\n' "$normalized_path"
-}
-
-has_pr5_configuration() {
-    [[ -n "$OPENAPI_SPEC" || -n "$API_FUZZING_REVIEW" || -n "$API_BASE_URL" || -n "$AUTH_HEADER_NAME" || -n "$AUTH_HEADER_VALUE" ]]
-}
-
-has_api_fuzzing_review() {
-    [[ -n "$API_FUZZING_REVIEW" ]]
 }
 
 while [[ $# -gt 0 ]]; do
@@ -185,6 +178,12 @@ fi
 if (( 10#$SCHEMATHESIS_MAX_EXAMPLES > 0 )); then
     is_true "$DAST_AUTHORIZED" || die "PR5 requiere --authorize-dast para DAST/API fuzzing autenticado"
     is_true "$ACTIVE_DAST_AUTHORIZED" || die "fuzzing activo requiere --authorize-active-dast"
+fi
+if has_api_fuzzing_review; then
+    api_fuzz_active_dast="$(api_fuzzing_review_requires_active_dast)"
+    if [[ "$api_fuzz_active_dast" == "true" ]]; then
+        is_true "$ACTIVE_DAST_AUTHORIZED" || die "api-fuzzing-review con active_dast=true requiere --authorize-active-dast"
+    fi
 fi
 [[ "$COVERAGE_THRESHOLD" =~ ^[0-9]+$ ]] || die "--coverage-threshold debe ser entero entre 0 y 100"
 COVERAGE_THRESHOLD_NUM=$((10#$COVERAGE_THRESHOLD))
@@ -439,18 +438,18 @@ PY
     fi
     add_item "3 Custom SAST Rules" "$sast_status" "$sast_hint"
 
-    local authz_status="MISSING" authz_hint="add --authz-matrix"
-    if [[ -n "$AUTHZ_MATRIX" && "$output_ready" == READY ]]; then authz_status="READY"; authz_hint="-";
-    elif [[ "$output_ready" == READY ]]; then authz_status="CONFIGURING"; fi
+    local authz_info authz_status authz_hint
+    authz_info="$(manual_evidence_readiness authz "$output_ready")"
+    IFS='|' read -r authz_status authz_hint <<<"$authz_info"
     local pr4_status="MISSING" pr4_hint="add --authz-matrix, --idor-review, --session-review"
 
-    local idor_status="MISSING" idor_hint="add --idor-review"
-    if [[ -n "$IDOR_REVIEW" && "$output_ready" == READY ]]; then idor_status="READY"; idor_hint="-";
-    elif [[ "$output_ready" == READY ]]; then idor_status="CONFIGURING"; fi
+    local idor_info idor_status idor_hint
+    idor_info="$(manual_evidence_readiness idor "$output_ready")"
+    IFS='|' read -r idor_status idor_hint <<<"$idor_info"
 
-    local session_status="MISSING" session_hint="add --session-review"
-    if [[ -n "$SESSION_REVIEW" && "$output_ready" == READY ]]; then session_status="READY"; session_hint="-";
-    elif [[ "$output_ready" == READY ]]; then session_status="CONFIGURING"; fi
+    local session_info session_status session_hint
+    session_info="$(manual_evidence_readiness session "$output_ready")"
+    IFS='|' read -r session_status session_hint <<<"$session_info"
     if [[ "$authz_status" == READY && "$idor_status" == READY && "$session_status" == READY ]]; then
         pr4_status="READY"; pr4_hint="-"
     elif [[ "$output_ready" == READY ]]; then
@@ -469,13 +468,9 @@ PY
     fi
     add_item "5 DAST Auth & API Fuzzing" "$dast_status" "$dast_hint"
 
-    local api_fuzz_status="MISSING" api_fuzz_hint="add --api-fuzzing-review"
-    if [[ -n "$API_FUZZING_REVIEW" && "$output_ready" == READY ]]; then
-        api_fuzz_status="READY"
-        api_fuzz_hint="-"
-    elif [[ -n "$API_FUZZING_REVIEW" ]] || [[ -n "$TARGET_URL" || -n "$OPENAPI_SPEC" || -n "$API_BASE_URL" || -n "$AUTH_HEADER_NAME" || -n "$AUTH_HEADER_VALUE" ]]; then
-        api_fuzz_status="CONFIGURING"
-    fi
+    local api_fuzz_info api_fuzz_status api_fuzz_hint
+    api_fuzz_info="$(manual_evidence_readiness api_fuzzing "$output_ready")"
+    IFS='|' read -r api_fuzz_status api_fuzz_hint <<<"$api_fuzz_info"
     add_item "5a API Fuzzing" "$api_fuzz_status" "$api_fuzz_hint"
 
     local headers_status="$dast_status" headers_hint="$dast_hint"
@@ -524,18 +519,12 @@ PY
         plan+=("django-showmigrations (host)")
         plan+=("django-show-urls (host)")
     fi
-    if [[ -n "$AUTHZ_MATRIX" ]]; then
-        plan+=("authz-matrix (host)")
-    fi
-    if [[ -n "$IDOR_REVIEW" ]]; then
-        plan+=("idor-review (host)")
-    fi
-    if [[ -n "$SESSION_REVIEW" ]]; then
-        plan+=("session-security (host)")
-    fi
-    if has_api_fuzzing_review; then
-        plan+=("api-fuzzing (host)")
-    fi
+    local manual_key
+    while IFS= read -r manual_key; do
+        if manual_evidence_enabled "$manual_key"; then
+            plan+=("$(manual_evidence_plan_label "$manual_key")")
+        fi
+    done < <(manual_evidence_keys)
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
         plan+=("http-headers (host)")
         plan+=("testssl (toolbox)")
@@ -593,18 +582,16 @@ if [[ "$GENERATE_ONLY" == "true" ]]; then
     printf 'Modo generate-only. No se ejecutarán escáneres.\n'
     write_status "scanners" "skipped" "0" "generate-only"
     if should_run_django; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
-    if [[ -n "$AUTHZ_MATRIX" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
-    if [[ -n "$IDOR_REVIEW" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
-    if [[ -n "$SESSION_REVIEW" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
-    if has_api_fuzzing_review; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
+    while IFS= read -r manual_key; do
+        if manual_evidence_enabled "$manual_key"; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
+    done < <(manual_evidence_keys)
 else
     TOOL_TOTAL=13
     if [[ "$RUN_TRUFFLEHOG" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     if should_run_django; then TOOL_TOTAL=$((TOOL_TOTAL + 5)); fi
-    if [[ -n "$AUTHZ_MATRIX" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
-    if [[ -n "$IDOR_REVIEW" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
-    if [[ -n "$SESSION_REVIEW" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
-    if has_api_fuzzing_review; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
+    while IFS= read -r manual_key; do
+        if manual_evidence_enabled "$manual_key"; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
+    done < <(manual_evidence_keys)
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
         TOOL_TOTAL=$((TOOL_TOTAL + 3))
         if [[ "$RUN_ZAP" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
@@ -744,59 +731,19 @@ else
 fi
 
 authz_rc="0"
-if [[ -n "$AUTHZ_MATRIX" ]]; then
-    Q_AUTHZ_MATRIX="$(printf '%q' "$AUTHZ_MATRIX")"
-    Q_REPORTS="$(printf '%q' "$REPORTS_DIR")"
-    Q_AUTHZ_SCRIPT="$(printf '%q' "${SCRIPT_DIR}/authz_matrix.py")"
-    run_host "authz-matrix" "python3 ${Q_AUTHZ_SCRIPT} ${Q_AUTHZ_MATRIX} ${Q_REPORTS}"
-    authz_rc="$?"
-else
-    printf '  authz-matrix: omitido (sin --authz-matrix)\n'
-    write_status "authz-matrix" "skipped" "0" "omitido; sin --authz-matrix"
-fi
-
 idor_rc="0"
-if [[ -n "$IDOR_REVIEW" ]]; then
-    progress "idor-review"
-    cp "$IDOR_REVIEW" "${REPORTS_DIR}/F5/A01-idor-review.md"
-    idor_rc="$?"
-    progress_done "$idor_rc"
-    write_status "idor-review" "host" "$idor_rc" "copy IDOR review to F5/A01-idor-review.md"
-else
-    printf '  idor-review: omitido (sin --idor-review)\n'
-    write_status "idor-review" "skipped" "0" "omitido; sin --idor-review"
-fi
-
 session_rc="0"
-if [[ -n "$SESSION_REVIEW" ]]; then
-    Q_SESSION_REVIEW="$(printf '%q' "$SESSION_REVIEW")"
-    Q_REPORTS="$(printf '%q' "$REPORTS_DIR")"
-    Q_SESSION_SCRIPT="$(printf '%q' "${SCRIPT_DIR}/session_security.py")"
-    session_command="python3 ${Q_SESSION_SCRIPT} ${Q_SESSION_REVIEW} ${Q_REPORTS}"
-    SAFE_SESSION_REVIEW_NAME="$(printf '%s' "$(basename "$SESSION_REVIEW")" | tr -cd '[:alnum:]_.-')"
-    [[ -n "$SAFE_SESSION_REVIEW_NAME" ]] || SAFE_SESSION_REVIEW_NAME="session-review.json"
-    run_host "session-security" "$session_command" "python3 session_security.py ${SAFE_SESSION_REVIEW_NAME} reports"
-    session_rc="$?"
-else
-    printf '  session-security: omitido (sin --session-review)\n'
-    write_status "session-security" "skipped" "0" "omitido; sin --session-review"
-fi
-
 api_fuzz_rc="0"
-if has_api_fuzzing_review; then
-    Q_REVIEW="$(printf '%q' "$API_FUZZING_REVIEW")"
-    Q_REPORTS="$(printf '%q' "$REPORTS_DIR")"
-    Q_SCRIPT="$(printf '%q' "${SCRIPT_DIR}/api_fuzzing.py")"
-    SAFE_API_REVIEW_NAME="$(printf '%s' "$(basename "$API_FUZZING_REVIEW")" | tr -cd '[:alnum:]_.-')"
-    [[ -n "$SAFE_API_REVIEW_NAME" ]] || SAFE_API_REVIEW_NAME="api-fuzzing-review.json"
-    SAFE_AUTH_HEADER_NAME="$(printf '%s' "$AUTH_HEADER_NAME" | tr -cd '[:alnum:]_-')"
-    api_fuzz_command="python3 ${Q_SCRIPT} ${Q_REVIEW} ${Q_REPORTS}"
-    run_host "api-fuzzing" "$api_fuzz_command" "python3 api_fuzzing.py ${SAFE_API_REVIEW_NAME} header=${SAFE_AUTH_HEADER_NAME} value=[REDACTED]"
-    api_fuzz_rc="$?"
-else
-    printf '  api-fuzzing: omitido (sin --api-fuzzing-review)\n'
-    write_status "api-fuzzing" "skipped" "0" "omitido; sin --api-fuzzing-review"
-fi
+while IFS= read -r manual_key; do
+    run_or_skip_manual_evidence "$manual_key"
+    rc="$?"
+    case "$manual_key" in
+        authz) authz_rc="$rc" ;;
+        idor) idor_rc="$rc" ;;
+        session) session_rc="$rc" ;;
+        api_fuzzing) api_fuzz_rc="$rc" ;;
+    esac
+done < <(manual_evidence_keys)
 
 python3 "${SCRIPT_DIR}/summarize_artifacts.py" "$REPORTS_DIR" 2> "${STATUS_DIR}/summarize-artifacts.log"
 summarize_rc=$?
