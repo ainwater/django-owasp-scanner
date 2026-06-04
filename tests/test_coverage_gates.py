@@ -240,6 +240,23 @@ class CoverageGatesTest(unittest.TestCase):
         self.assertEqual(a05["missing_required"], ["api_fuzzing"])
         self.assertEqual(a05["failed_results"], [])
 
+    def test_missing_api_fuzzing_evidence_counts_as_missing_required_for_a05(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reports = Path(tmp)
+            write(reports / "F4" / "semgrep.json")
+            write(reports / "status" / "django-check.status")
+            write(reports / "F2" / "authz.yml")
+            write(reports / "F2" / "authz-results.json", '{"status":"pass"}')
+            write(reports / "F2" / "session-security.json")
+            write(reports / "F2" / "session-security-results.json", '{"status":"pass"}')
+
+            result = coverage_gates.evaluate(reports, model(), threshold=100)
+
+        a05 = category_by_id(result, "A05")
+        self.assertEqual(a05["status"], "fail")
+        self.assertEqual(a05["missing_required"], ["api_fuzzing"])
+        self.assertEqual(result["gates"]["status"], "fail")
+
     def test_threshold_must_be_between_zero_and_one_hundred(self) -> None:
         with self.assertRaisesRegex(ValueError, "between 0 and 100"):
             coverage_gates.parse_threshold("101")

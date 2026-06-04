@@ -262,7 +262,7 @@ AUTH_HEADER_VALUE="Bearer <privado>"
   --api-fuzzing-review "$API_FUZZING_REVIEW"
 ```
 
-Este flujo normaliza evidencia (`F6/api-fuzzing*.json`) desde la revisión privada y la incorpora a cobertura/gates de A05 cuando se entrega `--api-fuzzing-review`; no ejecuta Schemathesis automáticamente en esta versión. Para evitar exposición de secretos, no pongas tokens literales en el comando: usa variables privadas o archivo de entorno fuera de git.
+Este flujo normaliza evidencia (`F6/api-fuzzing*.json`) desde la revisión privada; como `api_fuzzing` está marcado como evidencia requerida de A05 en el modelo actual, omitir `--api-fuzzing-review` deja A05 incompleto y puede hacer fallar los gates con umbrales altos o al 100%. No ejecuta Schemathesis automáticamente en esta versión. Para evitar exposición de secretos, no pongas tokens literales en el comando: usa variables privadas o archivo de entorno fuera de git.
 
 `--schemathesis-max-examples N` (N > 0) funciona como gate de autorización y exige `--authorize-dast` y `--authorize-active-dast`; no habilita ejecución automática de fuzzing por sí solo.
 
