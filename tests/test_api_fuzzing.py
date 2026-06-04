@@ -77,6 +77,25 @@ class ApiFuzzingTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "authorization must be a JSON object"):
                 api_fuzzing.run(review, reports)
 
+    def test_authorization_flags_must_be_booleans(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            review = root / "review.json"
+            payload = passing_review()
+            payload["authorization"] = {"dast": "false", "active_dast": False, "header_name": "Authorization"}
+            review.write_text(json.dumps(payload))
+
+            with self.assertRaisesRegex(RuntimeError, r"authorization\.dast must be boolean"):
+                api_fuzzing.load_review(review)
+
+    def test_authorization_header_name_is_trimmed(self) -> None:
+        review = passing_review()
+        review["authorization"] = {"dast": True, "active_dast": False, "header_name": "  Authorization  "}
+
+        result = api_fuzzing.evaluate(review, Path("openapi.json"))
+
+        self.assertEqual(result["authorization"], {"dast": True, "active_dast": False, "header_name": "Authorization"})
+
     def test_passing_review_generates_pass_results(self) -> None:
         result = api_fuzzing.evaluate(passing_review(), Path("review.json"))
 

@@ -27,6 +27,7 @@ def load_review(path: Path) -> dict[str, Any]:
     authorization = data.get("authorization", {})
     if not isinstance(authorization, dict):
         raise RuntimeError("api fuzzing review authorization must be a JSON object")
+    normalize_authorization(data)
     return data
 
 
@@ -67,8 +68,27 @@ def checked_rows(review: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def normalize_authorization(review: dict[str, Any]) -> dict[str, Any]:
+    authorization = review.get("authorization", {})
+    dast = authorization.get("dast", False)
+    active_dast = authorization.get("active_dast", False)
+    header_name = authorization.get("header_name", "")
+    if not isinstance(dast, bool):
+        raise RuntimeError("authorization.dast must be boolean")
+    if not isinstance(active_dast, bool):
+        raise RuntimeError("authorization.active_dast must be boolean")
+    if not isinstance(header_name, str):
+        raise RuntimeError("authorization.header_name must be a string")
+    return {
+        "dast": dast,
+        "active_dast": active_dast,
+        "header_name": header_name.strip(),
+    }
+
+
 def evaluate(review: dict[str, Any], source: Path) -> dict[str, Any]:
     checks = checked_rows(review)
+    authorization = normalize_authorization(review)
     failed = [item["id"] for item in checks if item["status"] == "fail"]
     findings = [
         {
@@ -80,18 +100,13 @@ def evaluate(review: dict[str, Any], source: Path) -> dict[str, Any]:
         for item in checks
         if item["status"] == "fail"
     ]
-    authorization = review.get("authorization", {})
     return {
         "schema_version": "1.0",
         "generated_at": datetime.now(timezone.utc).replace(microsecond=0).isoformat().replace("+00:00", "Z"),
         "source": source.name,
         "status": "pass" if not failed else "fail",
         "summary": {"total": len(checks), "passed": len(checks) - len(failed), "failed": len(failed)},
-        "authorization": {
-            "dast": bool(authorization.get("dast", False)),
-            "active_dast": bool(authorization.get("active_dast", False)),
-            "header_name": authorization.get("header_name", ""),
-        },
+        "authorization": authorization,
         "checks": checks,
         "failed_checks": failed,
         "findings": findings,
