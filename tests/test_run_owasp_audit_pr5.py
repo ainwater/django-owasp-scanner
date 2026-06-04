@@ -103,6 +103,33 @@ class RunOwaspAuditPr5Test(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("authorize-dast", result.stderr)
 
+    def test_auth_header_value_alone_does_not_trigger_pr5_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            result = subprocess.run(
+                [
+                    "bash",
+                    str(RUNNER),
+                    "--project",
+                    str(ROOT),
+                    "--product",
+                    "Test",
+                    "--auth-header-value",
+                    "Bearer secret",
+                    "--output",
+                    tmp,
+                    "--generate-only",
+                    "--skip-dd-import",
+                    "--coverage-threshold",
+                    "0",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0)
+        self.assertNotIn("authorize-dast", result.stderr)
+
     def test_active_api_fuzzing_requires_authorize_active_dast(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             spec = Path(tmp) / "openapi.json"

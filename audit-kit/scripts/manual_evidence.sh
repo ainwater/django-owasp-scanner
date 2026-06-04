@@ -3,7 +3,7 @@ manual_evidence_keys() {
 }
 
 has_pr5_configuration() {
-    [[ -n "$OPENAPI_SPEC" || -n "$API_FUZZING_REVIEW" || -n "$API_BASE_URL" || -n "$AUTH_HEADER_NAME" || -n "$AUTH_HEADER_VALUE" ]]
+    [[ -n "$OPENAPI_SPEC" || -n "$API_FUZZING_REVIEW" || -n "$API_BASE_URL" || -n "$AUTH_HEADER_NAME" ]]
 }
 
 has_api_fuzzing_review() {

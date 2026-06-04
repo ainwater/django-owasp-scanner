@@ -96,6 +96,17 @@ class ApiFuzzingTest(unittest.TestCase):
 
         self.assertEqual(result["authorization"], {"dast": True, "active_dast": False, "header_name": "Authorization"})
 
+    def test_load_review_returns_normalized_authorization(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            review_path = Path(tmp) / "review.json"
+            payload = passing_review()
+            payload["authorization"]["header_name"] = "  Authorization  "
+            review_path.write_text(json.dumps(payload))
+
+            review = api_fuzzing.load_review(review_path)
+
+        self.assertEqual(review["authorization"], {"dast": True, "active_dast": False, "header_name": "Authorization"})
+
     def test_authorization_dast_must_be_true_for_accepted_review(self) -> None:
         review = passing_review()
         review["authorization"] = {"dast": False, "active_dast": False, "header_name": "Authorization"}

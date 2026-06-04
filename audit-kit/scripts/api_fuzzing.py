@@ -28,7 +28,7 @@ def load_review(path: Path) -> dict[str, Any]:
     authorization = data.get("authorization", {})
     if not isinstance(authorization, dict):
         raise RuntimeError("api fuzzing review authorization must be a JSON object")
-    normalize_authorization(data)
+    data["authorization"] = normalize_authorization(data)
     return data
 
 
