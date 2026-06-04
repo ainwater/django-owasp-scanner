@@ -142,7 +142,7 @@
       ],
       "manual_evidence": [
         {"id": "dangerous_sinks_review", "artifacts": ["F5/A05-dangerous-sinks.md"], "required": true},
-        {"id": "api_fuzzing", "artifacts": ["F6/api-fuzzing.json"], "required": false}
+        {"id": "api_fuzzing", "artifacts": ["F6/api-fuzzing.json", "F6/api-fuzzing-results.json"], "required": true}
       ],
       "defectdojo_tags": ["owasp-2025", "A05", "django", "injection", "xss"]
     },

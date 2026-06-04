@@ -22,6 +22,8 @@ def load_review(path: Path) -> dict[str, Any]:
     checks = data.get("checks")
     if not isinstance(checks, list):
         raise RuntimeError("api fuzzing review requires checks list")
+    if not checks:
+        raise RuntimeError("api fuzzing review requires at least one check")
     authorization = data.get("authorization", {})
     if not isinstance(authorization, dict):
         raise RuntimeError("api fuzzing review authorization must be a JSON object")

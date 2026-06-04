@@ -242,6 +242,30 @@ La revision de sesion debe ser un JSON con `checks`; cada check requiere `id`, `
 
 Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar con `--authorize-dast`. Para importacion automatica, definir `DD_API_TOKEN` o usar `--dd-token`.
 
+DAST autenticado + API fuzzing (PR5) con evidencia privada:
+
+```bash
+OPENAPI_SPEC=/ruta/privada/openapi.json
+API_FUZZING_REVIEW=/ruta/privada/api-fuzzing-review.json
+AUTH_HEADER_NAME=Authorization
+AUTH_HEADER_VALUE="Bearer <privado>"
+
+./audit-kit/scripts/run_owasp_audit.sh \
+  --project "$AUDIT_PROJECT" \
+  --product "$AUDIT_PRODUCT_NAME" \
+  --target https://staging.ejemplo.com \
+  --authorize-dast \
+  --openapi-spec "$OPENAPI_SPEC" \
+  --api-base-url https://staging.ejemplo.com/api \
+  --auth-header-name "$AUTH_HEADER_NAME" \
+  --auth-header-value "$AUTH_HEADER_VALUE" \
+  --api-fuzzing-review "$API_FUZZING_REVIEW"
+```
+
+Este flujo normaliza evidencia (`F6/api-fuzzing*.json`) desde la revisión privada; no ejecuta Schemathesis automáticamente en esta versión. Para evitar exposición de secretos, no pongas tokens literales en el comando: usa variables privadas o archivo de entorno fuera de git.
+
+`--schemathesis-max-examples N` (N > 0) funciona como gate de autorización y exige `--authorize-dast` y `--authorize-active-dast`; no habilita ejecución automática de fuzzing por sí solo.
+
 ## Flujo
 
 1. Compila la toolbox Docker si no existe.
@@ -249,15 +273,16 @@ Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar 
 3. Si se proporciona `--authz-matrix`, valida la matriz A01 y escribe `F2/authz-matrix.yml` y `F2/authz-results.json`.
 4. Si se proporciona `--idor-review`, copia la revision manual a `F5/A01-idor-review.md`.
 5. Si se proporciona `--session-review`, valida controles de logout, rotacion, enumeracion, MFA y brute force, y escribe `F2/session-security.json` y `F2/session-security-results.json`.
-6. Muestra progreso numerado y resumen tecnico por herramienta.
-7. Conserva artefactos crudos en `$OUTPUT_DIR/reports/`.
-8. Escribe `$OUTPUT_DIR/reports/summary.json` con conteos saneados.
-9. Escribe `$OUTPUT_DIR/reports/coverage.json` y `$OUTPUT_DIR/reports/gates.json` con cobertura requerida y gates OWASP.
-10. Escribe `$OUTPUT_DIR/reports/evidence-manifest.json` con artefactos, autorizaciones, cobertura y gates.
-11. Imprime resumen de ejecucion con el estado de `coverage-gates`.
-12. Importa a DefectDojo si existe `--dd-token` o `DD_API_TOKEN`.
-13. Imprime checklist de controles no automatizables OWASP Top 10:2025.
-14. Solo abre DefectDojo si se usa `--open-defectdojo`.
+6. Si se proporciona `--api-fuzzing-review`, normaliza evidencia de API fuzzing y escribe `F6/api-fuzzing.json` y `F6/api-fuzzing-results.json`.
+7. Muestra progreso numerado y resumen tecnico por herramienta.
+8. Conserva artefactos crudos en `$OUTPUT_DIR/reports/`.
+9. Escribe `$OUTPUT_DIR/reports/summary.json` con conteos saneados.
+10. Escribe `$OUTPUT_DIR/reports/coverage.json` y `$OUTPUT_DIR/reports/gates.json` con cobertura requerida y gates OWASP.
+11. Escribe `$OUTPUT_DIR/reports/evidence-manifest.json` con artefactos, autorizaciones, cobertura y gates.
+12. Imprime resumen de ejecucion con el estado de `coverage-gates`.
+13. Importa a DefectDojo si existe `--dd-token` o `DD_API_TOKEN`.
+14. Imprime checklist de controles no automatizables OWASP Top 10:2025.
+15. Solo abre DefectDojo si se usa `--open-defectdojo`.
 
 ## Parametros
 
@@ -271,6 +296,12 @@ Para DAST pasivo, definir `AUDIT_TARGET_URL`, coordinar autorizacion y ejecutar 
 | `--idor-review PATH` | No | Revision manual IDOR/A01 validada; se copia a `F5/A01-idor-review.md` |
 | `--session-review PATH` | No | Revision JSON de logout, rotacion, enumeracion, MFA y brute force; genera `F2/session-security.json` y `F2/session-security-results.json` |
 | `--target URL` | No | URL autorizada para DAST pasivo |
+| `--openapi-spec PATH` | No | Especificacion OpenAPI privada para flujo PR5 autenticado |
+| `--api-base-url URL` | No | Base URL autenticada para APIs del fuzzing |
+| `--auth-header-name NAME` | No | Nombre del header de autenticacion (ej. `Authorization`) |
+| `--auth-header-value VALUE` | No | Valor privado del header de autenticacion (redactado en status) |
+| `--api-fuzzing-review PATH` | No | Revision JSON privada de API fuzzing; genera `F6/api-fuzzing.json` y `F6/api-fuzzing-results.json` |
+| `--schemathesis-max-examples N` | No | Activa ejemplos mutados si N > 0; requiere `--authorize-active-dast` |
 | `--output DIR` | No | Directorio de salida (defecto: `audit-kit/runs/<slug>-<timestamp>`) |
 | `--dd-token TOKEN` | No | API token de DefectDojo para importacion automatica |
 | `--dd-url URL` | No | URL de DefectDojo (defecto: `http://localhost:8080`) |

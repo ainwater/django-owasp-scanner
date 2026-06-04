@@ -44,8 +44,52 @@ def model() -> dict:
                 ],
                 "manual_evidence": [],
             },
+            {
+                "id": "A05",
+                "name": "Injection",
+                "automated_evidence": [],
+                "manual_evidence": [
+                    {
+                        "id": "api_fuzzing",
+                        "artifacts": ["F6/api-fuzzing.json", "F6/api-fuzzing-results.json"],
+                        "required": True,
+                    }
+                ],
+            },
         ],
     }
+
+
+def category_by_id(result: dict, category_id: str) -> dict:
+    for category in result["categories"]:
+        if category["id"] == category_id:
+            return category
+    raise AssertionError(f"Missing category {category_id}")
+
+
+def write_required_baseline(
+    reports: Path,
+    *,
+    authz_status: str | None = "pass",
+    session_status: str | None = "pass",
+    include_api: bool = False,
+    api_status: str = "pass",
+    api_results_empty: bool = False,
+) -> None:
+    write(reports / "F4" / "semgrep.json")
+    write(reports / "status" / "django-check.status")
+    if authz_status is not None:
+        write(reports / "F2" / "authz.yml")
+        write(reports / "F2" / "authz-results.json", json.dumps({"status": authz_status}))
+    if session_status is not None:
+        write(reports / "F2" / "session-security.json")
+        write(reports / "F2" / "session-security-results.json", json.dumps({"status": session_status}))
+    if include_api:
+        write(reports / "F6" / "api-fuzzing.json")
+        if api_results_empty:
+            write(reports / "F6" / "api-fuzzing-results.json", "")
+        else:
+            write(reports / "F6" / "api-fuzzing-results.json", json.dumps({"status": api_status}))
 
 
 class CoverageGatesTest(unittest.TestCase):
@@ -69,18 +113,15 @@ class CoverageGatesTest(unittest.TestCase):
     def test_global_gate_passes_when_required_evidence_meets_threshold(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             reports = Path(tmp)
-            write(reports / "F4" / "semgrep.json")
-            write(reports / "F2" / "authz.yml")
-            write(reports / "F2" / "authz-results.json", '{"status":"pass"}')
-            write(reports / "F2" / "session-security.json")
-            write(reports / "F2" / "session-security-results.json", '{"status":"pass"}')
-            write(reports / "status" / "django-check.status")
+            write_required_baseline(reports, include_api=True)
 
             result = coverage_gates.evaluate(reports, model(), threshold=100)
 
-        self.assertEqual([category["status"] for category in result["categories"]], ["pass", "pass"])
-        self.assertEqual(result["summary"]["required_present"], 4)
-        self.assertEqual(result["summary"]["required_total"], 4)
+        self.assertEqual(category_by_id(result, "A01")["status"], "pass")
+        self.assertEqual(category_by_id(result, "A02")["status"], "pass")
+        self.assertEqual(category_by_id(result, "A05")["status"], "pass")
+        self.assertEqual(result["summary"]["required_present"], 5)
+        self.assertEqual(result["summary"]["required_total"], 5)
         self.assertEqual(result["summary"]["coverage_percent"], 100)
         self.assertEqual(
             result["gates"],
@@ -97,6 +138,8 @@ class CoverageGatesTest(unittest.TestCase):
             reports = Path(tmp)
             write(reports / "F4" / "semgrep.json")
             write(reports / "status" / "django-check.status")
+            write(reports / "F6" / "api-fuzzing.json")
+            write(reports / "F6" / "api-fuzzing-results.json", '{"status":"pass"}')
 
             result = coverage_gates.evaluate(reports, model(), threshold=30)
 
@@ -111,12 +154,7 @@ class CoverageGatesTest(unittest.TestCase):
     def test_optional_evidence_does_not_reduce_gate_score(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             reports = Path(tmp)
-            write(reports / "F4" / "semgrep.json")
-            write(reports / "F2" / "authz.yml")
-            write(reports / "F2" / "authz-results.json", '{"status":"pass"}')
-            write(reports / "F2" / "session-security.json")
-            write(reports / "F2" / "session-security-results.json", '{"status":"pass"}')
-            write(reports / "status" / "django-check.status")
+            write_required_baseline(reports, include_api=True)
 
             result = coverage_gates.evaluate(reports, model(), threshold=100)
 
@@ -128,12 +166,7 @@ class CoverageGatesTest(unittest.TestCase):
     def test_authz_matrix_result_failure_blocks_a01_gate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             reports = Path(tmp)
-            write(reports / "F4" / "semgrep.json")
-            write(reports / "F2" / "authz.yml")
-            write(reports / "F2" / "authz-results.json", '{"status":"fail"}')
-            write(reports / "F2" / "session-security.json")
-            write(reports / "F2" / "session-security-results.json", '{"status":"pass"}')
-            write(reports / "status" / "django-check.status")
+            write_required_baseline(reports, authz_status="fail")
 
             result = coverage_gates.evaluate(reports, model(), threshold=100)
 
@@ -146,12 +179,7 @@ class CoverageGatesTest(unittest.TestCase):
     def test_failed_result_artifact_blocks_gate_even_below_threshold(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             reports = Path(tmp)
-            write(reports / "F4" / "semgrep.json")
-            write(reports / "F2" / "authz.yml")
-            write(reports / "F2" / "authz-results.json", '{"status":"fail"}')
-            write(reports / "F2" / "session-security.json")
-            write(reports / "F2" / "session-security-results.json", '{"status":"pass"}')
-            write(reports / "status" / "django-check.status")
+            write_required_baseline(reports, authz_status="fail")
 
             result = coverage_gates.evaluate(reports, model(), threshold=0)
 
@@ -165,9 +193,9 @@ class CoverageGatesTest(unittest.TestCase):
             write(reports / "F4" / "semgrep.json")
             write(reports / "F2" / "authz.yml")
             write(reports / "F2" / "authz-results.json", "")
+            write(reports / "status" / "django-check.status")
             write(reports / "F2" / "session-security.json")
             write(reports / "F2" / "session-security-results.json", '{"status":"pass"}')
-            write(reports / "status" / "django-check.status")
 
             result = coverage_gates.evaluate(reports, model(), threshold=100)
 
@@ -178,18 +206,39 @@ class CoverageGatesTest(unittest.TestCase):
     def test_session_security_result_failure_blocks_a01_gate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             reports = Path(tmp)
-            write(reports / "F4" / "semgrep.json")
-            write(reports / "F2" / "authz.yml")
-            write(reports / "F2" / "authz-results.json", '{"status":"pass"}')
-            write(reports / "F2" / "session-security.json")
-            write(reports / "F2" / "session-security-results.json", '{"status":"fail"}')
-            write(reports / "status" / "django-check.status")
+            write_required_baseline(reports, session_status="fail")
 
             result = coverage_gates.evaluate(reports, model(), threshold=0)
 
         self.assertEqual(result["categories"][0]["status"], "fail")
         self.assertEqual(result["categories"][0]["failed_results"], ["session_security"])
         self.assertEqual(result["gates"]["failed_categories"], ["A01"])
+
+    def test_failed_api_fuzzing_result_blocks_a05_gate(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reports = Path(tmp)
+            write_required_baseline(reports, include_api=True, api_status="fail")
+
+            result = coverage_gates.evaluate(reports, model(), threshold=0)
+
+        a05 = category_by_id(result, "A05")
+        self.assertEqual(a05["status"], "fail")
+        self.assertEqual(a05["missing_required"], [])
+        self.assertEqual(a05["failed_results"], ["api_fuzzing"])
+        self.assertEqual(result["gates"]["status"], "fail")
+        self.assertIn("A05", result["gates"]["failed_categories"])
+
+    def test_empty_api_fuzzing_result_is_missing_not_failed(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            reports = Path(tmp)
+            write_required_baseline(reports, include_api=True, api_results_empty=True)
+
+            result = coverage_gates.evaluate(reports, model(), threshold=100)
+
+        a05 = category_by_id(result, "A05")
+        self.assertEqual(a05["status"], "fail")
+        self.assertEqual(a05["missing_required"], ["api_fuzzing"])
+        self.assertEqual(a05["failed_results"], [])
 
     def test_threshold_must_be_between_zero_and_one_hundred(self) -> None:
         with self.assertRaisesRegex(ValueError, "between 0 and 100"):

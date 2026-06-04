@@ -50,6 +50,14 @@ class ApiFuzzingTest(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "requires checks list"):
                 api_fuzzing.load_review(path)
 
+    def test_empty_checks_list_fails(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "review.json"
+            path.write_text(json.dumps({"checks": []}))
+
+            with self.assertRaisesRegex(RuntimeError, "requires at least one check"):
+                api_fuzzing.load_review(path)
+
     def test_duplicate_check_id_fails(self) -> None:
         review = passing_review()
         review["checks"] = [review["checks"][0], review["checks"][0]]
