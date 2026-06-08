@@ -59,6 +59,7 @@
         {"id": "checkov", "artifacts": ["F4/checkov.json"], "required": true},
         {"id": "trivy_misconfig", "artifacts": ["F4/trivy.json"], "required": true},
         {"id": "http_headers", "artifacts": ["F6/http-headers.txt"], "required": false},
+        {"id": "web_policies", "artifacts": ["F6/web-policies.json", "F6/web-policies-results.json"], "required": false},
         {"id": "nuclei", "artifacts": ["F6/nuclei-full.json"], "required": false}
       ],
       "manual_evidence": [

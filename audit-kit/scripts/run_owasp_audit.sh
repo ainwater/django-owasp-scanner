@@ -42,6 +42,7 @@ GENERATE_ONLY="false"
 TOOL_N=0
 TOOL_TOTAL=0
 django_rc=0
+web_policies_rc=0
 
 usage() {
     cat <<'USAGE'
@@ -527,6 +528,7 @@ PY
     done < <(manual_evidence_keys)
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
         plan+=("http-headers (host)")
+        plan+=("web-policies (host)")
         plan+=("testssl (toolbox)")
         plan+=("sslyze (toolbox)")
         if [[ "$RUN_NUCLEI" == "true" ]]; then plan+=("nuclei (toolbox)"); fi
@@ -593,7 +595,7 @@ else
         if manual_evidence_enabled "$manual_key"; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     done < <(manual_evidence_keys)
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
-        TOOL_TOTAL=$((TOOL_TOTAL + 3))
+        TOOL_TOTAL=$((TOOL_TOTAL + 4))
         if [[ "$RUN_ZAP" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
         if [[ "$RUN_NUCLEI" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     fi
@@ -668,6 +670,8 @@ try:
 except Exception as exc:
     print(type(exc).__name__, exc)
 PY"
+        run_host "web-policies" "python3 $(printf '%q' "${SCRIPT_DIR}/http_headers.py") $(printf '%q' "$TARGET_URL") $(printf '%q' "${REPORTS_DIR}/F6/http-headers.txt") $(printf '%q' "$REPORTS_DIR")"
+        web_policies_rc="$?"
         run_toolbox "testssl" 'testssl --warnings batch --jsonfile /workspace/reports/F6/testssl-full.json "$AUDIT_TARGET_URL"'
         run_toolbox "sslyze" 'python - <<'"'"'PY'"'"' > /tmp/sslyze-target
 from urllib.parse import urlparse
