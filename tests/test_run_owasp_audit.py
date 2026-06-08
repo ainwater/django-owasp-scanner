@@ -4,78 +4,10 @@ import subprocess
 import tempfile
 import unittest
 import os
-import shlex
 import json
 from pathlib import Path
 
-
-ROOT = Path(__file__).resolve().parents[1]
-RUNNER = ROOT / "audit-kit" / "scripts" / "run_owasp_audit.sh"
-
-
-def write(path: Path, content: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(content)
-
-
-def make_django_project(root: Path) -> None:
-    write(root / "manage.py", "")
-    write(root / "django" / "__init__.py", "def setup():\n    return None\n")
-    write(root / "django" / "conf.py", "class Settings: pass\nsettings = Settings()\n")
-    write(root / "django" / "urls.py", "class Pattern:\n    def __init__(self, route): self._route = route\nclass UrlPattern:\n    def __init__(self, route, callback, name=''):\n        self.pattern = Pattern(route); self.callback = callback; self.name = name\ndef path(route, callback, name=''):\n    return UrlPattern(route, callback, name)\n")
-    write(root / "app" / "__init__.py", "")
-    write(root / "app" / "views.py", "def health(request):\n    return None\n")
-    write(root / "app" / "urls.py", "from django.urls import path\nfrom . import views\nurlpatterns = [path('health/', views.health, name='health')]\n")
-    write(root / "config" / "__init__.py", "")
-    write(root / "config" / "settings.py", "from django.conf import settings\nSECRET_KEY = 'secret'\nDEBUG = False\nALLOWED_HOSTS = ['example.com']\nROOT_URLCONF = 'app.urls'\nINSTALLED_APPS = ['rest_framework', 'app']\nMIDDLEWARE = []\nREST_FRAMEWORK = {'DEFAULT_PERMISSION_CLASSES': ['rest_framework.permissions.IsAuthenticated']}\nfor name, value in list(globals().items()):\n    if name.isupper(): setattr(settings, name, value)\n")
-
-
-def make_fake_docker(bin_dir: Path) -> None:
-    write(
-        bin_dir / "docker",
-        "#!/usr/bin/env bash\n"
-        "if [[ \"$1 $2 $3\" == \"image inspect owasp-audit:latest\" ]]; then exit 0; fi\n"
-        "if [[ \"$1\" == \"run\" ]]; then exit 0; fi\n"
-        "exit 0\n",
-    )
-    (bin_dir / "docker").chmod(0o755)
-
-
-def make_recording_docker(bin_dir: Path, log_path: Path) -> None:
-    write(
-        bin_dir / "docker",
-        "#!/usr/bin/env bash\n"
-        f"printf '%s\\n' \"$*\" >> {shlex.quote(str(log_path))}\n"
-        "if [[ \"$1 $2 $3\" == \"image inspect owasp-audit:latest\" ]]; then exit 0; fi\n"
-        "if [[ \"$1\" == \"run\" ]]; then exit 0; fi\n"
-        "exit 0\n",
-    )
-    (bin_dir / "docker").chmod(0o755)
-
-
-def write_session_review(path: Path, status: str = "pass") -> None:
-    controls = [
-        "logout_invalidates_session",
-        "session_rotation",
-        "enumeration_resistance",
-        "mfa_privileged",
-        "brute_force_protection",
-    ]
-    checks = [{"id": control, "status": status, "evidence": f"{control} evidence"} for control in controls]
-    write(path, json.dumps({"checks": checks}))
-
-
-def make_fake_docker_without_image(bin_dir: Path) -> None:
-    write(
-        bin_dir / "docker",
-        "#!/usr/bin/env bash\n"
-        "if [[ \"$1\" == \"info\" ]]; then exit 0; fi\n"
-        "if [[ \"$1 $2 $3\" == \"image inspect owasp-audit:latest\" ]]; then exit 1; fi\n"
-        "if [[ \"$1\" == \"build\" ]]; then exit 23; fi\n"
-        "if [[ \"$1\" == \"run\" ]]; then exit 0; fi\n"
-        "exit 0\n",
-    )
-    (bin_dir / "docker").chmod(0o755)
+from tests.runner_test_helpers import RUNNER, ROOT, make_django_project, make_fake_docker, make_fake_docker_without_image, make_recording_docker, write, write_session_review
 
 
 class RunOwaspAuditTest(unittest.TestCase):

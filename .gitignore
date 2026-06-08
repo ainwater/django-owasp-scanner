@@ -6,6 +6,7 @@
 reports/
 audit-kit/runs/
 .playwright-cli/
+docs/
 __pycache__/
 **/__pycache__/
 *.py[cod]

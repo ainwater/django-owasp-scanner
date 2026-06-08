@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 KIT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd -P)"
 ROOT_DIR="$(cd "${KIT_DIR}/.." && pwd -P)"
 SEMGREP_RULES="audit-kit/semgrep/django-drf.yml"
+source "${SCRIPT_DIR}/manual_evidence.sh"
 
 IMAGE="${AUDIT_DOCKER_IMAGE:-owasp-audit:latest}"
 PROJECT="${AUDIT_PROJECT:-}"
@@ -15,6 +16,12 @@ AUTHZ_MATRIX="${AUDIT_AUTHZ_MATRIX:-}"
 IDOR_REVIEW="${AUDIT_IDOR_REVIEW:-}"
 SESSION_REVIEW="${AUDIT_SESSION_REVIEW:-}"
 TARGET_URL="${AUDIT_TARGET_URL:-}"
+OPENAPI_SPEC="${AUDIT_OPENAPI_SPEC:-}"
+API_BASE_URL="${AUDIT_API_BASE_URL:-}"
+AUTH_HEADER_NAME="${AUDIT_AUTH_HEADER_NAME:-}"
+AUTH_HEADER_VALUE="${AUDIT_AUTH_HEADER_VALUE:-}"
+API_FUZZING_REVIEW="${AUDIT_API_FUZZING_REVIEW:-}"
+SCHEMATHESIS_MAX_EXAMPLES="${AUDIT_SCHEMATHESIS_MAX_EXAMPLES:-0}"
 OUTPUT_DIR="${AUDIT_OUTPUT_DIR:-}"
 RUN_DAST="${AUDIT_RUN_DAST:-true}"
 RUN_ZAP="${AUDIT_RUN_ZAP:-true}"
@@ -54,6 +61,12 @@ Opcionales:
   --idor-review PATH           Revision manual IDOR/A01 validada por el auditor
   --session-review PATH        Revision JSON de logout, rotacion, enumeracion, MFA y brute force
   --target URL                 URL staging/prod autorizada para DAST pasivo
+  --openapi-spec PATH          Especificación OpenAPI privada para fuzzing autenticado
+  --api-base-url URL           Base URL autenticada para APIs
+  --auth-header-name NAME      Nombre del header de autenticación
+  --auth-header-value VALUE    Valor del header de autenticación (no se persiste)
+  --api-fuzzing-review PATH    Resultado JSON privado de Schemathesis/API fuzzing
+  --schemathesis-max-examples N Numero de ejemplos activos; requiere --authorize-active-dast
   --output DIR                 Directorio de salida (defecto: audit-kit/runs/<slug>-<timestamp>)
   --image NAME                 Imagen Docker toolbox (defecto: owasp-audit:latest)
   --dd-token TOKEN             API token de DefectDojo para auto-importación
@@ -90,20 +103,38 @@ is_true() {
     esac
 }
 
+resolve_evidence_path() {
+    local raw_path="$1" missing_message="$2"
+    [[ -f "$raw_path" ]] || die "${missing_message}: $raw_path"
+    local normalized_path resolved_path
+    normalized_path="$(cd "$(dirname -- "$raw_path")" && pwd -P)/$(basename -- "$raw_path")"
+    resolved_path="$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$normalized_path")"
+    case "$resolved_path" in
+        "${KIT_DIR}/templates/"*) die "no uses templates del audit kit como evidencia: $normalized_path" ;;
+    esac
+    printf '%s\n' "$normalized_path"
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --project) PROJECT="$2"; shift 2 ;;
-        --product) PRODUCT="$2"; shift 2 ;;
-        --settings) SETTINGS_MODULE="$2"; shift 2 ;;
-        --django-command-prefix) DJANGO_PREFIX="$2"; shift 2 ;;
-        --authz-matrix) AUTHZ_MATRIX="$2"; shift 2 ;;
-        --idor-review) IDOR_REVIEW="$2"; shift 2 ;;
-        --session-review) SESSION_REVIEW="$2"; shift 2 ;;
-        --target) TARGET_URL="$2"; shift 2 ;;
-        --output) OUTPUT_DIR="$2"; shift 2 ;;
-        --image) IMAGE="$2"; shift 2 ;;
-        --dd-token) DD_API_TOKEN="$2"; shift 2 ;;
-        --dd-url) DD_URL="$2"; shift 2 ;;
+        --project) [[ $# -ge 2 ]] || die "--project requiere PATH"; PROJECT="$2"; shift 2 ;;
+        --product) [[ $# -ge 2 ]] || die "--product requiere NAME"; PRODUCT="$2"; shift 2 ;;
+        --settings) [[ $# -ge 2 ]] || die "--settings requiere MODULE"; SETTINGS_MODULE="$2"; shift 2 ;;
+        --django-command-prefix) [[ $# -ge 2 ]] || die "--django-command-prefix requiere CMD"; DJANGO_PREFIX="$2"; shift 2 ;;
+        --authz-matrix) [[ $# -ge 2 ]] || die "--authz-matrix requiere PATH"; AUTHZ_MATRIX="$2"; shift 2 ;;
+        --idor-review) [[ $# -ge 2 ]] || die "--idor-review requiere PATH"; IDOR_REVIEW="$2"; shift 2 ;;
+        --session-review) [[ $# -ge 2 ]] || die "--session-review requiere PATH"; SESSION_REVIEW="$2"; shift 2 ;;
+        --target) [[ $# -ge 2 ]] || die "--target requiere URL"; TARGET_URL="$2"; shift 2 ;;
+        --openapi-spec) [[ $# -ge 2 ]] || die "--openapi-spec requiere PATH"; OPENAPI_SPEC="$2"; shift 2 ;;
+        --api-base-url) [[ $# -ge 2 ]] || die "--api-base-url requiere URL"; API_BASE_URL="$2"; shift 2 ;;
+        --auth-header-name) [[ $# -ge 2 ]] || die "--auth-header-name requiere NAME"; AUTH_HEADER_NAME="$2"; shift 2 ;;
+        --auth-header-value) [[ $# -ge 2 ]] || die "--auth-header-value requiere VALUE"; AUTH_HEADER_VALUE="$2"; shift 2 ;;
+        --api-fuzzing-review) [[ $# -ge 2 ]] || die "--api-fuzzing-review requiere PATH"; API_FUZZING_REVIEW="$2"; shift 2 ;;
+        --schemathesis-max-examples) [[ $# -ge 2 ]] || die "--schemathesis-max-examples requiere N"; SCHEMATHESIS_MAX_EXAMPLES="$2"; shift 2 ;;
+        --output) [[ $# -ge 2 ]] || die "--output requiere DIR"; OUTPUT_DIR="$2"; shift 2 ;;
+        --image) [[ $# -ge 2 ]] || die "--image requiere NAME"; IMAGE="$2"; shift 2 ;;
+        --dd-token) [[ $# -ge 2 ]] || die "--dd-token requiere TOKEN"; DD_API_TOKEN="$2"; shift 2 ;;
+        --dd-url) [[ $# -ge 2 ]] || die "--dd-url requiere URL"; DD_URL="$2"; shift 2 ;;
         --skip-dast) RUN_DAST="false"; shift ;;
         --skip-zap) RUN_ZAP="false"; shift ;;
         --skip-nuclei) RUN_NUCLEI="false"; shift ;;
@@ -126,22 +157,33 @@ done
 [[ -n "$PRODUCT" ]] || die "--product es obligatorio"
 [[ -d "$PROJECT" ]] || die "el directorio del proyecto no existe: $PROJECT"
 if [[ -n "$AUTHZ_MATRIX" ]]; then
-    [[ -f "$AUTHZ_MATRIX" ]] || die "la matriz de autorización no existe: $AUTHZ_MATRIX"
-    AUTHZ_MATRIX="$(cd "$(dirname "$AUTHZ_MATRIX")" && pwd -P)/$(basename "$AUTHZ_MATRIX")"
-    AUTHZ_MATRIX_REAL="$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$AUTHZ_MATRIX")"
-    case "$AUTHZ_MATRIX_REAL" in "${KIT_DIR}/templates/"*) die "no uses templates del audit kit como evidencia: $AUTHZ_MATRIX" ;; esac
+    AUTHZ_MATRIX="$(resolve_evidence_path "$AUTHZ_MATRIX" "la matriz de autorización no existe")"
 fi
 if [[ -n "$IDOR_REVIEW" ]]; then
-    [[ -f "$IDOR_REVIEW" ]] || die "la revisión IDOR no existe: $IDOR_REVIEW"
-    IDOR_REVIEW="$(cd "$(dirname "$IDOR_REVIEW")" && pwd -P)/$(basename "$IDOR_REVIEW")"
-    IDOR_REVIEW_REAL="$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$IDOR_REVIEW")"
-    case "$IDOR_REVIEW_REAL" in "${KIT_DIR}/templates/"*) die "no uses templates del audit kit como evidencia: $IDOR_REVIEW" ;; esac
+    IDOR_REVIEW="$(resolve_evidence_path "$IDOR_REVIEW" "la revisión IDOR no existe")"
 fi
 if [[ -n "$SESSION_REVIEW" ]]; then
-    [[ -f "$SESSION_REVIEW" ]] || die "la revisión de sesión no existe: $SESSION_REVIEW"
-    SESSION_REVIEW="$(cd "$(dirname "$SESSION_REVIEW")" && pwd -P)/$(basename "$SESSION_REVIEW")"
-    SESSION_REVIEW_REAL="$(python3 -c 'import pathlib,sys; print(pathlib.Path(sys.argv[1]).resolve())' "$SESSION_REVIEW")"
-    case "$SESSION_REVIEW_REAL" in "${KIT_DIR}/templates/"*) die "no uses templates del audit kit como evidencia: $SESSION_REVIEW" ;; esac
+    SESSION_REVIEW="$(resolve_evidence_path "$SESSION_REVIEW" "la revisión de sesión no existe")"
+fi
+if [[ -n "$OPENAPI_SPEC" ]]; then
+    OPENAPI_SPEC="$(resolve_evidence_path "$OPENAPI_SPEC" "la especificación OpenAPI no existe")"
+fi
+if [[ -n "$API_FUZZING_REVIEW" ]]; then
+    API_FUZZING_REVIEW="$(resolve_evidence_path "$API_FUZZING_REVIEW" "la revisión de API fuzzing no existe")"
+fi
+[[ "$SCHEMATHESIS_MAX_EXAMPLES" =~ ^[0-9]+$ ]] || die "--schemathesis-max-examples debe ser entero mayor o igual a 0"
+if has_pr5_configuration; then
+    is_true "$DAST_AUTHORIZED" || die "PR5 requiere --authorize-dast para DAST/API fuzzing autenticado"
+fi
+if (( 10#$SCHEMATHESIS_MAX_EXAMPLES > 0 )); then
+    is_true "$DAST_AUTHORIZED" || die "PR5 requiere --authorize-dast para DAST/API fuzzing autenticado"
+    is_true "$ACTIVE_DAST_AUTHORIZED" || die "fuzzing activo requiere --authorize-active-dast"
+fi
+if has_api_fuzzing_review; then
+    api_fuzz_active_dast="$(api_fuzzing_review_requires_active_dast)"
+    if [[ "$api_fuzz_active_dast" == "true" ]]; then
+        is_true "$ACTIVE_DAST_AUTHORIZED" || die "api-fuzzing-review con active_dast=true requiere --authorize-active-dast"
+    fi
 fi
 [[ "$COVERAGE_THRESHOLD" =~ ^[0-9]+$ ]] || die "--coverage-threshold debe ser entero entre 0 y 100"
 COVERAGE_THRESHOLD_NUM=$((10#$COVERAGE_THRESHOLD))
@@ -256,13 +298,25 @@ run_toolbox() {
 }
 
 run_host() {
-    local name="$1" command="$2" rc
+    local name="$1" command="$2" status_command="${3:-$1 (sanitized; see status/$1.log)}" rc
+    local log_path tmp_log
+    log_path="${STATUS_DIR}/${name}.log"
     progress "$name"
-    bash -lc "$command" > "${STATUS_DIR}/${name}.log" 2>&1
+    bash -lc "$command" > "$log_path" 2>&1
     rc=$?
+    tmp_log="${log_path}.tmp"
+    { printf 'command=%s\n' "$status_command"; cat "$log_path"; } > "$tmp_log"
+    mv "$tmp_log" "$log_path"
     progress_done "$rc"
-    write_status "$name" "host" "$rc" "$command"
+    write_status "$name" "host" "$rc" "$status_command"
     return "$rc"
+}
+
+update_final_rc() {
+    local candidate="$1"
+    if [[ "$final_rc" == "0" && "$candidate" != "0" ]]; then
+        final_rc="$candidate"
+    fi
 }
 
 run_zap() {
@@ -384,18 +438,18 @@ PY
     fi
     add_item "3 Custom SAST Rules" "$sast_status" "$sast_hint"
 
-    local authz_status="MISSING" authz_hint="add --authz-matrix"
-    if [[ -n "$AUTHZ_MATRIX" && "$output_ready" == READY ]]; then authz_status="READY"; authz_hint="-";
-    elif [[ "$output_ready" == READY ]]; then authz_status="CONFIGURING"; fi
+    local authz_info authz_status authz_hint
+    authz_info="$(manual_evidence_readiness authz "$output_ready")"
+    IFS='|' read -r authz_status authz_hint <<<"$authz_info"
     local pr4_status="MISSING" pr4_hint="add --authz-matrix, --idor-review, --session-review"
 
-    local idor_status="MISSING" idor_hint="add --idor-review"
-    if [[ -n "$IDOR_REVIEW" && "$output_ready" == READY ]]; then idor_status="READY"; idor_hint="-";
-    elif [[ "$output_ready" == READY ]]; then idor_status="CONFIGURING"; fi
+    local idor_info idor_status idor_hint
+    idor_info="$(manual_evidence_readiness idor "$output_ready")"
+    IFS='|' read -r idor_status idor_hint <<<"$idor_info"
 
-    local session_status="MISSING" session_hint="add --session-review"
-    if [[ -n "$SESSION_REVIEW" && "$output_ready" == READY ]]; then session_status="READY"; session_hint="-";
-    elif [[ "$output_ready" == READY ]]; then session_status="CONFIGURING"; fi
+    local session_info session_status session_hint
+    session_info="$(manual_evidence_readiness session "$output_ready")"
+    IFS='|' read -r session_status session_hint <<<"$session_info"
     if [[ "$authz_status" == READY && "$idor_status" == READY && "$session_status" == READY ]]; then
         pr4_status="READY"; pr4_hint="-"
     elif [[ "$output_ready" == READY ]]; then
@@ -413,6 +467,11 @@ PY
         dast_status="CONFIGURING"; dast_hint="add --authorize-dast"
     fi
     add_item "5 DAST Auth & API Fuzzing" "$dast_status" "$dast_hint"
+
+    local api_fuzz_info api_fuzz_status api_fuzz_hint
+    api_fuzz_info="$(manual_evidence_readiness api_fuzzing "$output_ready")"
+    IFS='|' read -r api_fuzz_status api_fuzz_hint <<<"$api_fuzz_info"
+    add_item "5a API Fuzzing" "$api_fuzz_status" "$api_fuzz_hint"
 
     local headers_status="$dast_status" headers_hint="$dast_hint"
     add_item "6 Headers & Web Policies" "$headers_status" "$headers_hint"
@@ -460,15 +519,12 @@ PY
         plan+=("django-showmigrations (host)")
         plan+=("django-show-urls (host)")
     fi
-    if [[ -n "$AUTHZ_MATRIX" ]]; then
-        plan+=("authz-matrix (host)")
-    fi
-    if [[ -n "$IDOR_REVIEW" ]]; then
-        plan+=("idor-review (host)")
-    fi
-    if [[ -n "$SESSION_REVIEW" ]]; then
-        plan+=("session-security (host)")
-    fi
+    local manual_key
+    while IFS= read -r manual_key; do
+        if manual_evidence_enabled "$manual_key"; then
+            plan+=("$(manual_evidence_plan_label "$manual_key")")
+        fi
+    done < <(manual_evidence_keys)
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
         plan+=("http-headers (host)")
         plan+=("testssl (toolbox)")
@@ -526,16 +582,16 @@ if [[ "$GENERATE_ONLY" == "true" ]]; then
     printf 'Modo generate-only. No se ejecutarán escáneres.\n'
     write_status "scanners" "skipped" "0" "generate-only"
     if should_run_django; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
-    if [[ -n "$AUTHZ_MATRIX" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
-    if [[ -n "$IDOR_REVIEW" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
-    if [[ -n "$SESSION_REVIEW" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
+    while IFS= read -r manual_key; do
+        if manual_evidence_enabled "$manual_key"; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
+    done < <(manual_evidence_keys)
 else
     TOOL_TOTAL=13
     if [[ "$RUN_TRUFFLEHOG" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     if should_run_django; then TOOL_TOTAL=$((TOOL_TOTAL + 5)); fi
-    if [[ -n "$AUTHZ_MATRIX" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
-    if [[ -n "$IDOR_REVIEW" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
-    if [[ -n "$SESSION_REVIEW" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
+    while IFS= read -r manual_key; do
+        if manual_evidence_enabled "$manual_key"; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
+    done < <(manual_evidence_keys)
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
         TOOL_TOTAL=$((TOOL_TOTAL + 3))
         if [[ "$RUN_ZAP" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
@@ -675,44 +731,19 @@ else
 fi
 
 authz_rc="0"
-if [[ -n "$AUTHZ_MATRIX" ]]; then
-    Q_AUTHZ_MATRIX="$(printf '%q' "$AUTHZ_MATRIX")"
-    Q_REPORTS="$(printf '%q' "$REPORTS_DIR")"
-    Q_AUTHZ_SCRIPT="$(printf '%q' "${SCRIPT_DIR}/authz_matrix.py")"
-    run_host "authz-matrix" "python3 ${Q_AUTHZ_SCRIPT} ${Q_AUTHZ_MATRIX} ${Q_REPORTS}"
-    authz_rc="$?"
-else
-    printf '  authz-matrix: omitido (sin --authz-matrix)\n'
-    write_status "authz-matrix" "skipped" "0" "omitido; sin --authz-matrix"
-fi
-
 idor_rc="0"
-if [[ -n "$IDOR_REVIEW" ]]; then
-    progress "idor-review"
-    cp "$IDOR_REVIEW" "${REPORTS_DIR}/F5/A01-idor-review.md"
-    idor_rc="$?"
-    progress_done "$idor_rc"
-    write_status "idor-review" "host" "$idor_rc" "copy IDOR review to F5/A01-idor-review.md"
-else
-    printf '  idor-review: omitido (sin --idor-review)\n'
-    write_status "idor-review" "skipped" "0" "omitido; sin --idor-review"
-fi
-
 session_rc="0"
-if [[ -n "$SESSION_REVIEW" ]]; then
-    Q_SESSION_REVIEW="$(printf '%q' "$SESSION_REVIEW")"
-    Q_REPORTS="$(printf '%q' "$REPORTS_DIR")"
-    Q_SESSION_SCRIPT="$(printf '%q' "${SCRIPT_DIR}/session_security.py")"
-    session_command="python3 ${Q_SESSION_SCRIPT} ${Q_SESSION_REVIEW} ${Q_REPORTS}"
-    progress "session-security"
-    bash -lc "$session_command" > "${STATUS_DIR}/session-security.log" 2>&1
-    session_rc="$?"
-    progress_done "$session_rc"
-    write_status "session-security" "host" "$session_rc" "python3 session_security.py $(basename "$SESSION_REVIEW") reports"
-else
-    printf '  session-security: omitido (sin --session-review)\n'
-    write_status "session-security" "skipped" "0" "omitido; sin --session-review"
-fi
+api_fuzz_rc="0"
+while IFS= read -r manual_key; do
+    run_or_skip_manual_evidence "$manual_key"
+    rc="$?"
+    case "$manual_key" in
+        authz) authz_rc="$rc" ;;
+        idor) idor_rc="$rc" ;;
+        session) session_rc="$rc" ;;
+        api_fuzzing) api_fuzz_rc="$rc" ;;
+    esac
+done < <(manual_evidence_keys)
 
 python3 "${SCRIPT_DIR}/summarize_artifacts.py" "$REPORTS_DIR" 2> "${STATUS_DIR}/summarize-artifacts.log"
 summarize_rc=$?
@@ -721,21 +752,12 @@ if [[ "$summarize_rc" != "0" ]]; then
     printf '\n[ERROR] summarize-artifacts failed (exit %s)\n' "$summarize_rc" >&2
 fi
 final_rc="$introspection_rc"
-if [[ "$final_rc" == "0" && "$django_rc" != "0" ]]; then
-    final_rc="$django_rc"
-fi
-if [[ "$final_rc" == "0" && "$authz_rc" != "0" ]]; then
-    final_rc="$authz_rc"
-fi
-if [[ "$final_rc" == "0" && "$idor_rc" != "0" ]]; then
-    final_rc="$idor_rc"
-fi
-if [[ "$final_rc" == "0" && "$session_rc" != "0" ]]; then
-    final_rc="$session_rc"
-fi
-if [[ "$final_rc" == "0" && "$summarize_rc" != "0" ]]; then
-    final_rc="$summarize_rc"
-fi
+update_final_rc "$django_rc"
+update_final_rc "$authz_rc"
+update_final_rc "$idor_rc"
+update_final_rc "$session_rc"
+update_final_rc "$api_fuzz_rc"
+update_final_rc "$summarize_rc"
 AUDIT_DAST_AUTHORIZED="$DAST_AUTHORIZED" \
 AUDIT_ACTIVE_DAST_AUTHORIZED="$ACTIVE_DAST_AUTHORIZED" \
 AUDIT_RUN_ZAP="$RUN_ZAP" \
@@ -750,9 +772,7 @@ write_status "evidence-manifest" "host" "$manifest_rc" "build_evidence_manifest.
 if [[ "$manifest_rc" != "0" ]]; then
     printf '\n[ERROR] evidence-manifest generation failed (exit %s)\n' "$manifest_rc" >&2
 fi
-if [[ "$final_rc" == "0" && "$manifest_rc" != "0" ]]; then
-    final_rc="$manifest_rc"
-fi
+update_final_rc "$manifest_rc"
 coverage_rc="2"
 coverage_status="unknown"
 coverage_percent="unknown"
@@ -774,9 +794,7 @@ if [[ "$coverage_rc" == "0" ]]; then
 else
     printf '\n[ERROR] Coverage gates: %s (%s%%/%s%%)\n' "$coverage_status" "$coverage_percent" "$COVERAGE_THRESHOLD" >&2
 fi
-if [[ "$final_rc" == "0" && "$coverage_rc" != "0" ]]; then
-    final_rc="$coverage_rc"
-fi
+update_final_rc "$coverage_rc"
 
 print_execution_summary
 
