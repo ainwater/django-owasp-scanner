@@ -323,9 +323,9 @@ def check_cookies(headers: dict[str, str]) -> list[dict[str, Any]]:
             results.append({
                 "id": check_id,
                 "header": "Set-Cookie",
-                "status": "pass",
+                "status": "warn",
                 "value": "[REDACTED]",
-                "finding": "Set-Cookie value redacted, attributes not analyzed",
+                "finding": "Set-Cookie value fully redacted, cookie attributes not analyzed",
             })
             continue
         missing = []
@@ -333,6 +333,8 @@ def check_cookies(headers: dict[str, str]) -> list[dict[str, Any]]:
             missing.append("Secure")
         if not attrs["HttpOnly"]:
             missing.append("HttpOnly")
+        if not attrs["SameSite"]:
+            missing.append("SameSite")
         same_value = attrs.get("SameSiteValue", "")
         same_none_no_secure = same_value and same_value.lower() == "none" and not attrs["Secure"]
         if same_none_no_secure:
@@ -351,7 +353,7 @@ def check_cookies(headers: dict[str, str]) -> list[dict[str, Any]]:
                 "value": value,
                 "finding": f"Set-Cookie missing flags: {', '.join(missing)}",
             })
-        elif "HttpOnly" in missing:
+        elif missing:
             results.append({
                 "id": check_id,
                 "header": "Set-Cookie",

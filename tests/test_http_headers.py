@@ -243,6 +243,12 @@ class CheckCookiesTest(unittest.TestCase):
         self.assertEqual(results[0]["status"], "warn")
         self.assertIn("HttpOnly", results[0]["finding"])
 
+    def test_missing_samesite_flag_is_warn(self) -> None:
+        headers = {"set-cookie": "sessionid=abc; Secure; HttpOnly"}
+        results = http_headers.check_cookies(headers)
+        self.assertEqual(results[0]["status"], "warn")
+        self.assertIn("SameSite", results[0]["finding"])
+
     def test_samesite_none_without_secure_is_fail(self) -> None:
         headers = {"set-cookie": "sessionid=abc; SameSite=None; HttpOnly"}
         results = http_headers.check_cookies(headers)
@@ -253,11 +259,16 @@ class CheckCookiesTest(unittest.TestCase):
         results = http_headers.check_cookies(headers)
         self.assertEqual(results[0]["status"], "pass")
 
-    def test_redacted_cookie_value_is_pass_with_note(self) -> None:
+    def test_fully_redacted_cookie_value_is_warn_with_note(self) -> None:
         headers = {"set-cookie": "[REDACTED]"}
         results = http_headers.check_cookies(headers)
-        self.assertEqual(results[0]["status"], "pass")
+        self.assertEqual(results[0]["status"], "warn")
         self.assertIn("redacted", results[0]["finding"].lower())
+
+    def test_redacted_cookie_value_with_attributes_is_pass(self) -> None:
+        headers = {"set-cookie": "sessionid=[REDACTED]; Secure; HttpOnly; SameSite=Lax"}
+        results = http_headers.check_cookies(headers)
+        self.assertEqual(results[0]["status"], "pass")
 
     def test_multiple_set_cookie_headers(self) -> None:
         headers = {
