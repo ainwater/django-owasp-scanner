@@ -1,5 +1,5 @@
 manual_evidence_keys() {
-    printf '%s\n' authz idor session api_fuzzing
+    printf '%s\n' authz idor session api_fuzzing logging_review
 }
 
 has_pr5_configuration() {
@@ -16,6 +16,7 @@ manual_evidence_path() {
         idor) printf '%s\n' "$IDOR_REVIEW" ;;
         session) printf '%s\n' "$SESSION_REVIEW" ;;
         api_fuzzing) printf '%s\n' "$API_FUZZING_REVIEW" ;;
+        logging_review) printf '%s\n' "$LOGGING_REVIEW" ;;
         *) return 1 ;;
     esac
 }
@@ -26,6 +27,7 @@ manual_evidence_hint() {
         idor) printf '%s\n' 'add --idor-review' ;;
         session) printf '%s\n' 'add --session-review' ;;
         api_fuzzing) printf '%s\n' 'add --api-fuzzing-review' ;;
+        logging_review) printf '%s\n' 'add --logging-review' ;;
         *) return 1 ;;
     esac
 }
@@ -44,6 +46,7 @@ manual_evidence_tool_name() {
         idor) printf '%s\n' 'idor-review' ;;
         session) printf '%s\n' 'session-security' ;;
         api_fuzzing) printf '%s\n' 'api-fuzzing' ;;
+        logging_review) printf '%s\n' 'logging-review' ;;
         *) return 1 ;;
     esac
 }
@@ -54,6 +57,7 @@ manual_evidence_skip_note() {
         idor) printf '%s\n' 'sin --idor-review' ;;
         session) printf '%s\n' 'sin --session-review' ;;
         api_fuzzing) printf '%s\n' 'sin --api-fuzzing-review' ;;
+        logging_review) printf '%s\n' 'sin --logging-review' ;;
         *) return 1 ;;
     esac
 }
@@ -112,6 +116,17 @@ run_manual_evidence_step() {
             safe_auth_header_name="$(printf '%s' "$AUTH_HEADER_NAME" | tr -cd '[:alnum:]_-')"
             api_fuzz_command="python3 ${q_script} ${q_review} ${q_reports}"
             run_host "api-fuzzing" "$api_fuzz_command" "python3 api_fuzzing.py ${safe_api_review_name} header=${safe_auth_header_name} value=[REDACTED]"
+            return "$?"
+            ;;
+        logging_review)
+            local q_review q_reports q_script safe_review_name command
+            q_review="$(printf '%q' "$LOGGING_REVIEW")"
+            q_reports="$(printf '%q' "$REPORTS_DIR")"
+            q_script="$(printf '%q' "${SCRIPT_DIR}/logging_review.py")"
+            safe_review_name="$(printf '%s' "$(basename -- "$LOGGING_REVIEW")" | tr -cd '[:alnum:]_.-')"
+            [[ -n "$safe_review_name" ]] || safe_review_name="logging-review.json"
+            command="python3 ${q_script} ${q_review} ${q_reports}"
+            run_host "logging-review" "$command" "python3 logging_review.py ${safe_review_name} reports"
             return "$?"
             ;;
     esac
