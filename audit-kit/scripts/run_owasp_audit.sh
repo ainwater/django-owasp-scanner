@@ -42,6 +42,7 @@ GENERATE_ONLY="false"
 TOOL_N=0
 TOOL_TOTAL=0
 django_rc=0
+web_policies_rc=0
 
 usage() {
     cat <<'USAGE'
@@ -527,6 +528,7 @@ PY
     done < <(manual_evidence_keys)
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
         plan+=("http-headers (host)")
+        plan+=("web-policies (host)")
         plan+=("testssl (toolbox)")
         plan+=("sslyze (toolbox)")
         if [[ "$RUN_NUCLEI" == "true" ]]; then plan+=("nuclei (toolbox)"); fi
@@ -593,7 +595,7 @@ else
         if manual_evidence_enabled "$manual_key"; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     done < <(manual_evidence_keys)
     if [[ "$RUN_DAST" == "true" && -n "$TARGET_URL" ]] && is_true "$DAST_AUTHORIZED"; then
-        TOOL_TOTAL=$((TOOL_TOTAL + 3))
+        TOOL_TOTAL=$((TOOL_TOTAL + 4))
         if [[ "$RUN_ZAP" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
         if [[ "$RUN_NUCLEI" == "true" ]]; then TOOL_TOTAL=$((TOOL_TOTAL + 1)); fi
     fi
@@ -657,17 +659,38 @@ testssl --version || true
 import os, urllib.request
 url = os.environ['AUDIT_TARGET_URL']
 req = urllib.request.Request(url, method='HEAD')
-sensitive = {'set-cookie', 'cookie', 'authorization', 'proxy-authorization', 'x-api-key', 'api-key'}
+sensitive = {'cookie', 'authorization', 'proxy-authorization', 'x-api-key', 'api-key'}
+
+def redact_set_cookie(value):
+    parts = [part.strip() for part in value.split(';')]
+    first = parts[0] if parts else ''
+    name = first.split('=', 1)[0].strip() if '=' in first else ''
+    redacted = f'{name}=[REDACTED]' if name else '[REDACTED]'
+    attrs = []
+    for part in parts[1:]:
+        item = part.strip()
+        lowered = item.lower()
+        if lowered in {'secure', 'httponly'}:
+            attrs.append(item)
+        elif lowered.startswith('samesite='):
+            attrs.append(item)
+    return '; '.join([redacted, *attrs])
+
 try:
     with urllib.request.urlopen(req, timeout=15) as r:
         print('status:', r.status)
         for k, v in r.headers.items():
-            if k.lower() in sensitive:
+            name = k.lower()
+            if name == 'set-cookie':
+                v = redact_set_cookie(v)
+            elif name in sensitive:
                 v = '[REDACTED]'
             print(f'{k}: {v}')
 except Exception as exc:
     print(type(exc).__name__, exc)
 PY"
+        run_host "web-policies" "python3 $(printf '%q' "${SCRIPT_DIR}/http_headers.py") $(printf '%q' "$TARGET_URL") $(printf '%q' "${REPORTS_DIR}/F6/http-headers.txt") $(printf '%q' "$REPORTS_DIR")"
+        web_policies_rc="$?"
         run_toolbox "testssl" 'testssl --warnings batch --jsonfile /workspace/reports/F6/testssl-full.json "$AUDIT_TARGET_URL"'
         run_toolbox "sslyze" 'python - <<'"'"'PY'"'"' > /tmp/sslyze-target
 from urllib.parse import urlparse
