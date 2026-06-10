@@ -243,7 +243,7 @@
         {"id": "zap_baseline", "artifacts": ["F6/zap-baseline.xml"], "required": false}
       ],
       "manual_evidence": [
-        {"id": "logging_matrix", "artifacts": ["F7/security-logging-matrix.md"], "required": true},
+        {"id": "logging_matrix", "artifacts": ["F7/security-logging-matrix.md", "F7/logging-review-results.json"], "required": true},
         {"id": "alerting_evidence", "artifacts": ["F7/alerting-evidence.md"], "required": true},
         {"id": "redaction_review", "artifacts": ["F7/redaction-review.md"], "required": true}
       ],
