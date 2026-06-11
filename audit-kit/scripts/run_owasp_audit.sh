@@ -22,6 +22,7 @@ AUTH_HEADER_NAME="${AUDIT_AUTH_HEADER_NAME:-}"
 AUTH_HEADER_VALUE="${AUDIT_AUTH_HEADER_VALUE:-}"
 API_FUZZING_REVIEW="${AUDIT_API_FUZZING_REVIEW:-}"
 LOGGING_REVIEW="${AUDIT_LOGGING_REVIEW:-}"
+THREAT_MODEL_REVIEW="${AUDIT_THREAT_MODEL_REVIEW:-}"
 SCHEMATHESIS_MAX_EXAMPLES="${AUDIT_SCHEMATHESIS_MAX_EXAMPLES:-0}"
 OUTPUT_DIR="${AUDIT_OUTPUT_DIR:-}"
 RUN_DAST="${AUDIT_RUN_DAST:-true}"
@@ -69,6 +70,7 @@ Opcionales:
   --auth-header-value VALUE    Valor del header de autenticación (no se persiste)
   --api-fuzzing-review PATH    Resultado JSON privado de Schemathesis/API fuzzing
   --logging-review PATH        Resultado JSON privado de auditoría de logging
+  --threat-model-review PATH   Resultado JSON privado de threat model e integridad
   --schemathesis-max-examples N Numero de ejemplos activos; requiere --authorize-active-dast
   --output DIR                 Directorio de salida (defecto: audit-kit/runs/<slug>-<timestamp>)
   --image NAME                 Imagen Docker toolbox (defecto: owasp-audit:latest)
@@ -134,6 +136,7 @@ while [[ $# -gt 0 ]]; do
         --auth-header-value) [[ $# -ge 2 ]] || die "--auth-header-value requiere VALUE"; AUTH_HEADER_VALUE="$2"; shift 2 ;;
         --api-fuzzing-review) [[ $# -ge 2 ]] || die "--api-fuzzing-review requiere PATH"; API_FUZZING_REVIEW="$2"; shift 2 ;;
         --logging-review) [[ $# -ge 2 ]] || die "--logging-review requiere PATH"; LOGGING_REVIEW="$2"; shift 2 ;;
+        --threat-model-review) [[ $# -ge 2 ]] || die "--threat-model-review requiere PATH"; THREAT_MODEL_REVIEW="$2"; shift 2 ;;
         --schemathesis-max-examples) [[ $# -ge 2 ]] || die "--schemathesis-max-examples requiere N"; SCHEMATHESIS_MAX_EXAMPLES="$2"; shift 2 ;;
         --output) [[ $# -ge 2 ]] || die "--output requiere DIR"; OUTPUT_DIR="$2"; shift 2 ;;
         --image) [[ $# -ge 2 ]] || die "--image requiere NAME"; IMAGE="$2"; shift 2 ;;
@@ -177,6 +180,9 @@ if [[ -n "$API_FUZZING_REVIEW" ]]; then
 fi
 if [[ -n "$LOGGING_REVIEW" ]]; then
     LOGGING_REVIEW="$(resolve_evidence_path "$LOGGING_REVIEW" "la revisión de logging no existe")"
+fi
+if [[ -n "$THREAT_MODEL_REVIEW" ]]; then
+    THREAT_MODEL_REVIEW="$(resolve_evidence_path "$THREAT_MODEL_REVIEW" "la revisión de threat model no existe")"
 fi
 [[ "$SCHEMATHESIS_MAX_EXAMPLES" =~ ^[0-9]+$ ]] || die "--schemathesis-max-examples debe ser entero mayor o igual a 0"
 if has_pr5_configuration; then
@@ -764,6 +770,7 @@ idor_rc="0"
 session_rc="0"
 api_fuzz_rc="0"
 logging_review_rc="0"
+threat_model_review_rc="0"
 while IFS= read -r manual_key; do
     run_or_skip_manual_evidence "$manual_key"
     rc="$?"
@@ -773,6 +780,7 @@ while IFS= read -r manual_key; do
         session) session_rc="$rc" ;;
         api_fuzzing) api_fuzz_rc="$rc" ;;
         logging_review) logging_review_rc="$rc" ;;
+        threat_model_review) threat_model_review_rc="$rc" ;;
     esac
 done < <(manual_evidence_keys)
 
@@ -789,6 +797,7 @@ update_final_rc "$idor_rc"
 update_final_rc "$session_rc"
 update_final_rc "$api_fuzz_rc"
 update_final_rc "$logging_review_rc"
+update_final_rc "$threat_model_review_rc"
 update_final_rc "$summarize_rc"
 AUDIT_DAST_AUTHORIZED="$DAST_AUTHORIZED" \
 AUDIT_ACTIVE_DAST_AUTHORIZED="$ACTIVE_DAST_AUTHORIZED" \
