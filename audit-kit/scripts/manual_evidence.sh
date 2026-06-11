@@ -1,5 +1,5 @@
 manual_evidence_keys() {
-    printf '%s\n' authz idor session api_fuzzing logging_review threat_model_review
+    printf '%s\n' authz idor session api_fuzzing logging_review threat_model_review supply_chain_review
 }
 
 has_pr5_configuration() {
@@ -18,6 +18,7 @@ manual_evidence_path() {
         api_fuzzing) printf '%s\n' "$API_FUZZING_REVIEW" ;;
         logging_review) printf '%s\n' "$LOGGING_REVIEW" ;;
         threat_model_review) printf '%s\n' "$THREAT_MODEL_REVIEW" ;;
+        supply_chain_review) printf '%s\n' "$SUPPLY_CHAIN_REVIEW" ;;
         *) return 1 ;;
     esac
 }
@@ -30,6 +31,7 @@ manual_evidence_hint() {
         api_fuzzing) printf '%s\n' 'add --api-fuzzing-review' ;;
         logging_review) printf '%s\n' 'add --logging-review' ;;
         threat_model_review) printf '%s\n' 'add --threat-model-review' ;;
+        supply_chain_review) printf '%s\n' 'add --supply-chain-review' ;;
         *) return 1 ;;
     esac
 }
@@ -50,6 +52,7 @@ manual_evidence_tool_name() {
         api_fuzzing) printf '%s\n' 'api-fuzzing' ;;
         logging_review) printf '%s\n' 'logging-review' ;;
         threat_model_review) printf '%s\n' 'threat-model-review' ;;
+        supply_chain_review) printf '%s\n' 'supply-chain-review' ;;
         *) return 1 ;;
     esac
 }
@@ -62,6 +65,7 @@ manual_evidence_skip_note() {
         api_fuzzing) printf '%s\n' 'sin --api-fuzzing-review' ;;
         logging_review) printf '%s\n' 'sin --logging-review' ;;
         threat_model_review) printf '%s\n' 'sin --threat-model-review' ;;
+        supply_chain_review) printf '%s\n' 'sin --supply-chain-review' ;;
         *) return 1 ;;
     esac
 }
@@ -142,6 +146,17 @@ run_manual_evidence_step() {
             [[ -n "$safe_review_name" ]] || safe_review_name="threat-model-review.json"
             command="python3 ${q_script} ${q_review} ${q_reports}"
             run_host "threat-model-review" "$command" "python3 threat_model_review.py ${safe_review_name} reports"
+            return "$?"
+            ;;
+        supply_chain_review)
+            local q_review q_reports q_script safe_review_name command
+            q_review="$(printf '%q' "$SUPPLY_CHAIN_REVIEW")"
+            q_reports="$(printf '%q' "$REPORTS_DIR")"
+            q_script="$(printf '%q' "${SCRIPT_DIR}/supply_chain_review.py")"
+            safe_review_name="$(printf '%s' "$(basename -- "$SUPPLY_CHAIN_REVIEW")" | tr -cd '[:alnum:]_.-')"
+            [[ -n "$safe_review_name" ]] || safe_review_name="supply-chain-review.json"
+            command="python3 ${q_script} ${q_review} ${q_reports}"
+            run_host "supply-chain-review" "$command" "python3 supply_chain_review.py ${safe_review_name} reports"
             return "$?"
             ;;
     esac
