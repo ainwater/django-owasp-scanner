@@ -166,7 +166,7 @@
         {"id": "checkov", "artifacts": ["F4/checkov.json"], "required": false}
       ],
       "manual_evidence": [
-        {"id": "threat_model", "artifacts": ["F3/threat-model.md"], "required": true},
+        {"id": "threat_model", "artifacts": ["F3/threat-model.md", "F3/threat-model-results.json"], "required": true},
         {"id": "abuse_cases", "artifacts": ["F3/abuse-cases.md"], "required": true},
         {"id": "business_limits", "artifacts": ["F3/business-limits.md"], "required": true}
       ],
