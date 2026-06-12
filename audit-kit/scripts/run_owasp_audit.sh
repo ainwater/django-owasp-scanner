@@ -893,7 +893,12 @@ printf '────────────────────\n'
 q_final_report="$(printf '%q' "${SCRIPT_DIR}/final_report.py")"
 q_reports="$(printf '%q' "$REPORTS_DIR")"
 q_output="$(printf '%q' "$OUTPUT_DIR")"
-python3 "${SCRIPT_DIR}/final_report.py" "$REPORTS_DIR" "$OUTPUT_DIR" 2> "${STATUS_DIR}/final-report.log" || true
+python3 ${q_final_report} ${q_reports} ${q_output} 2> "${STATUS_DIR}/final-report.log"
+final_report_rc="$?"
+write_status "final-report" "host" "$final_report_rc" "reporte final generado en ${OUTPUT_DIR}/owasp-audit-report.md"
+if [[ "$final_report_rc" != "0" ]]; then
+    printf '  [WARN] Final report generation had issues (see status/final-report.log)\n'
+fi
 printf '  Reporte: %s/owasp-audit-report.md\n' "$OUTPUT_DIR"
 printf '  Reporte: %s/owasp-audit-report.html\n' "$OUTPUT_DIR"
 
