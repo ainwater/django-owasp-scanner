@@ -513,7 +513,7 @@ PY
     fi
     add_item "9a DefectDojo Import" "$dd_status" "$dd_hint"
 
-    add_item "10 Final Report" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add final report generator"
+    add_item "10 Final Report" "$( [[ "$image_ready" == READY || "$GENERATE_ONLY" == "true" ]] && echo READY || echo CONFIGURING )" "-"
 
     plan+=("tool-versions (toolbox)")
     plan+=("bandit (toolbox)")
@@ -886,6 +886,16 @@ if [[ "$SKIP_DD_IMPORT" != "true" && -n "$DD_API_TOKEN" && "${DD_IMPORT_OK:-fals
         xdg-open "$DD_URL" 2>/dev/null || true
     fi
 fi
+
+printf '\n══════════════════════════════════════\n'
+printf 'Generando reporte final\n'
+printf '────────────────────\n'
+q_final_report="$(printf '%q' "${SCRIPT_DIR}/final_report.py")"
+q_reports="$(printf '%q' "$REPORTS_DIR")"
+q_output="$(printf '%q' "$OUTPUT_DIR")"
+python3 "${SCRIPT_DIR}/final_report.py" "$REPORTS_DIR" "$OUTPUT_DIR" 2> "${STATUS_DIR}/final-report.log" || true
+printf '  Reporte: %s/owasp-audit-report.md\n' "$OUTPUT_DIR"
+printf '  Reporte: %s/owasp-audit-report.html\n' "$OUTPUT_DIR"
 
 printf '\n══════════════════════════════════════\n'
 printf 'Validaciones no automatizables requeridas\n'
