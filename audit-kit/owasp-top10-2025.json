@@ -90,7 +90,7 @@
         {"id": "tool_versions", "artifacts": ["F1/tool-versions.txt"], "required": true}
       ],
       "manual_evidence": [
-        {"id": "supply_chain_review", "artifacts": ["F5/A03-supply-chain-review.md"], "required": true},
+        {"id": "supply_chain_review", "artifacts": ["F5/A03-supply-chain-review.md", "F5/supply-chain-results.json"], "required": true},
         {"id": "cicd_hardening", "artifacts": ["F5/A03-cicd-hardening.md"], "required": false}
       ],
       "defectdojo_tags": ["owasp-2025", "A03", "django", "supply-chain", "sbom"]
