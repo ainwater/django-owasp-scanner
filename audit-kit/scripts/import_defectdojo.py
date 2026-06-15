@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import time
 from datetime import date
 from pathlib import Path
 from typing import Any
@@ -38,10 +39,25 @@ META = metadata()
 PRODUCT_NAME = os.getenv("DD_PRODUCT_NAME") or META.get("product") or "Application"
 ENGAGEMENT_NAME = os.getenv("DD_ENGAGEMENT_NAME", "OWASP Top 10:2025 - Audit")
 BLOCKED_AUTO_IMPORT_LABELS = {"gitleaks", "detect-secrets", "trufflehog"}
+RETRY_STATUS_CODES = {502, 503, 504}
+RETRY_ATTEMPTS = int(os.getenv("DD_RETRY_ATTEMPTS", "30"))
+RETRY_DELAY = float(os.getenv("DD_RETRY_DELAY", "2"))
 
 
 def request(session: requests.Session, method: str, path: str, **kwargs: Any) -> requests.Response:
-    response = session.request(method, f"{DD_URL}{path}", timeout=120, **kwargs)
+    response = None
+    for attempt in range(1, RETRY_ATTEMPTS + 1):
+        try:
+            response = session.request(method, f"{DD_URL}{path}", timeout=120, **kwargs)
+        except requests.RequestException as exc:
+            if attempt == RETRY_ATTEMPTS:
+                die(f"{method} {path} failed: {exc.__class__.__name__}")
+            time.sleep(RETRY_DELAY)
+            continue
+        if response.status_code not in RETRY_STATUS_CODES or attempt == RETRY_ATTEMPTS:
+            break
+        time.sleep(RETRY_DELAY)
+    assert response is not None
     if response.status_code >= 400:
         body = response.text.replace("\n", " ")[:700]
         die(f"{method} {path} failed: HTTP {response.status_code}: {body}")
@@ -122,6 +138,19 @@ def content_type(path: Path) -> str:
     return "text/plain"
 
 
+def skipped_artifact_reason(path: Path) -> str:
+    try:
+        data = json.loads(path.read_text())
+    except Exception:
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    reason = data.get("error") or data.get("note")
+    if not reason:
+        return ""
+    return str(reason).replace("\n", " ")[:300]
+
+
 def import_scan(session: requests.Session, engagement_id: int, label: str, relative_path: str, scan_type: str, tags: list[str]) -> str:
     if label.lower() in BLOCKED_AUTO_IMPORT_LABELS:
         print(f"BLOCK {label}: secret-scanner artifacts require review and are not auto-imported")
@@ -130,26 +159,37 @@ def import_scan(session: requests.Session, engagement_id: int, label: str, relat
     if not artifact.exists() or artifact.stat().st_size == 0:
         print(f"SKIP {label}: missing artifact {relative_path}")
         return "skipped"
+    reason = skipped_artifact_reason(artifact)
+    if reason:
+        print(f"SKIP {label}: {reason}")
+        return "skipped"
     if not DD_FORCE_IMPORT and scan_already_imported(session, engagement_id, scan_type):
         print(f"SKIP {label}: {scan_type} already imported; set DD_FORCE_IMPORT=true to re-import")
         return "skipped"
     with artifact.open("rb") as handle:
-        response = session.post(
-            f"{DD_URL}/api/v2/import-scan/",
-            data={
-                "engagement": str(engagement_id),
-                "scan_type": scan_type,
-                "scan_date": SCAN_DATE,
-                "minimum_severity": "Info",
-                "active": "true",
-                "verified": "false",
-                "close_old_findings": "false",
-                "deduplication_on_engagement": "true",
-                "tags": tags,
-            },
-            files={"file": (artifact.name, handle, content_type(artifact))},
-            timeout=180,
-        )
+        response = None
+        for attempt in range(1, RETRY_ATTEMPTS + 1):
+            handle.seek(0)
+            response = session.post(
+                f"{DD_URL}/api/v2/import-scan/",
+                data={
+                    "engagement": str(engagement_id),
+                    "scan_type": scan_type,
+                    "scan_date": SCAN_DATE,
+                    "minimum_severity": "Info",
+                    "active": "true",
+                    "verified": "false",
+                    "close_old_findings": "false",
+                    "deduplication_on_engagement": "true",
+                    "tags": tags,
+                },
+                files={"file": (artifact.name, handle, content_type(artifact))},
+                timeout=180,
+            )
+            if response.status_code not in RETRY_STATUS_CODES or attempt == RETRY_ATTEMPTS:
+                break
+            time.sleep(RETRY_DELAY)
+    assert response is not None
     if response.status_code in (200, 201):
         print(f"OK import {label}: {scan_type}")
         return "ok"
@@ -255,9 +295,9 @@ def main() -> None:
         ("Semgrep Django", "F4/semgrep-django.json", "Semgrep JSON Report", ["owasp-2025", "semgrep", "sast"]),
         ("pip-audit", "F4/pip-audit.json", "pip-audit Scan", ["owasp-2025", "pip-audit", "sca"]),
         ("Grype", "F4/grype.json", "Anchore Grype", ["owasp-2025", "grype", "sca"]),
-        ("Checkov", "F4/checkov.json", "Checkov Report", ["owasp-2025", "checkov", "iac"]),
-        ("OSV Scanner", "F4/osv-source.json", "OSV Scanner", ["owasp-2025", "osv", "sca"]),
-        ("CycloneDX SBOM", "F4/sbom-cyclonedx.json", "CycloneDX", ["owasp-2025", "cyclonedx", "sbom"]),
+        ("Checkov", "F4/checkov.json", "Checkov Scan", ["owasp-2025", "checkov", "iac"]),
+        ("OSV Scanner", "F4/osv-source.json", "OSV Scan", ["owasp-2025", "osv", "sca"]),
+        ("CycloneDX SBOM", "F4/sbom-cyclonedx.json", "CycloneDX Scan", ["owasp-2025", "cyclonedx", "sbom"]),
         ("SSLyze", "F4/sslyze.json", "SSLyze Scan (JSON)", ["owasp-2025", "sslyze", "tls"]),
         ("Nuclei", "F6/nuclei-full.json", "Nuclei Scan", ["owasp-2025", "nuclei", "dast"]),
         ("ZAP", "F6/zap-baseline.xml", "ZAP Scan", ["owasp-2025", "zap", "dast"]),
@@ -278,6 +318,8 @@ def main() -> None:
     print(f"DefectDojo product: {DD_URL}/product/{product['id']}")
     print(f"DefectDojo findings: {DD_URL}/product/{product['id']}/findings")
     print(f"DefectDojo engagement: {DD_URL}/engagement/{engagement_id}")
+    if import_status.get("warn", 0):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

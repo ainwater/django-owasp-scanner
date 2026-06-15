@@ -39,6 +39,9 @@ DD_API_TOKEN="${DD_API_TOKEN:-}"
 DD_URL="${DD_URL:-http://localhost:8080}"
 SKIP_DD_IMPORT="${SKIP_DD_IMPORT:-false}"
 OPEN_DD="${AUDIT_OPEN_DEFECTDOJO:-false}"
+DD_ADMIN_USER="${DD_ADMIN_USER:-admin}"
+DD_ADMIN_PASSWORD="${DD_ADMIN_PASSWORD:-}"
+DD_ENGAGEMENT_NAME="${DD_ENGAGEMENT_NAME:-}"
 BUILD_IMAGE="true"
 GENERATE_ONLY="false"
 
@@ -216,6 +219,7 @@ PROJECT="$(cd "$PROJECT" && pwd -P)"
 TIMESTAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 SLUG="$(printf '%s' "$PRODUCT" | tr '[:upper:]' '[:lower:]' | tr -cs 'a-z0-9' '-' | sed 's/^-//;s/-$//')"
 [[ -n "$SLUG" ]] || SLUG="django-project"
+[[ -n "$DD_ENGAGEMENT_NAME" ]] || DD_ENGAGEMENT_NAME="OWASP Top 10:2025 - Audit - ${TIMESTAMP}"
 
 if [[ -z "$OUTPUT_DIR" ]]; then
     OUTPUT_DIR="${KIT_DIR}/runs/${SLUG}-${TIMESTAMP}"
@@ -223,12 +227,43 @@ fi
 OUTPUT_DIR="$(mkdir -p "$OUTPUT_DIR" && cd "$OUTPUT_DIR" && pwd -P)"
 REPORTS_DIR="${OUTPUT_DIR}/reports"
 STATUS_DIR="${REPORTS_DIR}/status"
+SCOPED_PROJECT="$PROJECT"
 
 mkdir -p \
     "${REPORTS_DIR}/F1" "${REPORTS_DIR}/F2" "${REPORTS_DIR}/F3" \
     "${REPORTS_DIR}/F4" "${REPORTS_DIR}/F5" "${REPORTS_DIR}/F6" \
     "${REPORTS_DIR}/F7" "${REPORTS_DIR}/F8" \
     "$STATUS_DIR"
+
+if git -C "$PROJECT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    SCOPED_PROJECT="${OUTPUT_DIR}/scoped-project"
+    mkdir -p "$SCOPED_PROJECT"
+    python3 - "$PROJECT" "$SCOPED_PROJECT" <<'PY'
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+src_root = Path(sys.argv[1]).resolve()
+dst_root = Path(sys.argv[2]).resolve()
+result = subprocess.run(
+    ["git", "-C", str(src_root), "ls-files", "-co", "--exclude-standard", "-z"],
+    capture_output=True,
+    check=True,
+)
+for raw in (p for p in result.stdout.split(b"\0") if p):
+    rel = raw.decode("utf-8", errors="surrogateescape")
+    src = src_root / rel
+    if not src.exists() or src.is_dir():
+        continue
+    dst = dst_root / rel
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    if src.is_symlink():
+        dst.symlink_to(src.readlink())
+    else:
+        shutil.copy2(src, dst)
+PY
+fi
 
 if [[ -d "${KIT_DIR}/runs" ]]; then
     ln -sfn "$(basename "$OUTPUT_DIR")" "${KIT_DIR}/runs/latest"
@@ -253,6 +288,17 @@ write_status() {
     local lf="${STATUS_DIR}/${name}.log"
     { printf 'tool=%s\nkind=%s\nexit_code=%s\nlog=status/%s.log\ncommand=%s\n' "$name" "$kind" "$rc" "$name" "$command"; } > "$sf"
     [[ -e "$lf" ]] || printf '%s\n' "$command" > "$lf"
+}
+
+load_defectdojo_admin_env() {
+    local env_file="${ROOT_DIR}/defectdojo/.env" key value
+    [[ -f "$env_file" ]] || return 0
+    while IFS='=' read -r key value; do
+        case "$key" in
+            DD_ADMIN_USER) [[ -n "$value" ]] && DD_ADMIN_USER="${value%\"}"; DD_ADMIN_USER="${DD_ADMIN_USER#\"}" ;;
+            DD_ADMIN_PASSWORD) [[ -n "$value" ]] && DD_ADMIN_PASSWORD="${value%\"}"; DD_ADMIN_PASSWORD="${DD_ADMIN_PASSWORD#\"}" ;;
+        esac
+    done < "$env_file"
 }
 
 print_execution_summary() {
@@ -305,7 +351,7 @@ run_toolbox() {
     docker run --rm \
         -e "AUDIT_TARGET_URL=${TARGET_URL}" \
         -e "RUFF_CACHE_DIR=/tmp/ruff-cache" \
-        -v "${PROJECT}:/workspace/project:ro" \
+        -v "${SCOPED_PROJECT}:/workspace/project:ro" \
         -v "${KIT_DIR}/semgrep:/workspace/audit-kit-semgrep:ro" \
         -v "${REPORTS_DIR}:/workspace/reports:rw" \
         -w /workspace/project \
@@ -513,7 +559,7 @@ PY
     fi
     add_item "9a DefectDojo Import" "$dd_status" "$dd_hint"
 
-    add_item "10 Final Report" "$( [[ "$manage_py" == READY ]] && echo CONFIGURING || echo MISSING )" "add final report generator"
+    add_item "10 Final Report" "$( [[ "$image_ready" == READY || "$GENERATE_ONLY" == "true" ]] && echo READY || echo CONFIGURING )" "-"
 
     plan+=("tool-versions (toolbox)")
     plan+=("bandit (toolbox)")
@@ -651,7 +697,7 @@ testssl --version || true
     run_toolbox "syft-sbom"        'syft dir:. -o cyclonedx-json > /workspace/reports/F4/sbom-cyclonedx.json'
     run_toolbox "checkov"          'checkov -d . -o json --quiet > /workspace/reports/F4/checkov.json || rc=$?; [ -s /workspace/reports/F4/checkov.json ] || printf "{\"summary\":{\"passed\":0,\"failed\":0,\"skipped\":0}}\n" > /workspace/reports/F4/checkov.json; exit ${rc:-0}'
     run_toolbox "osv-scanner"      'if [ -f requirements.txt ] || [ -f pyproject.toml ] || [ -f poetry.lock ] || [ -f Pipfile.lock ] || [ -f package-lock.json ] || [ -f pnpm-lock.yaml ] || [ -f yarn.lock ] || [ -f go.mod ] || [ -f Cargo.lock ]; then osv-scanner --format json --output-file /workspace/reports/F4/osv-source.json --recursive . || rc=$?; [ -s /workspace/reports/F4/osv-source.json ] || printf "{\"results\":[]}\n" > /workspace/reports/F4/osv-source.json; exit ${rc:-0}; else printf "{\"results\":[],\"note\":\"No supported dependency manifest found\"}\n" > /workspace/reports/F4/osv-source.json; fi'
-    run_toolbox "pip-audit"        'if [ -f requirements.txt ]; then pip-audit -r requirements.txt -f json -o /workspace/reports/F4/pip-audit.json; elif [ -f requirements/production.txt ]; then pip-audit -r requirements/production.txt -f json -o /workspace/reports/F4/pip-audit.json; elif [ -f requirements/base.txt ]; then pip-audit -r requirements/base.txt -f json -o /workspace/reports/F4/pip-audit.json; elif [ -f poetry.lock ]; then pip-audit --locked -f json -o /workspace/reports/F4/pip-audit.json .; else printf "{\"error\":\"No se encontró requirements.txt ni poetry.lock\"}\n" > /workspace/reports/F4/pip-audit.json; fi'
+    run_toolbox "pip-audit"        'if [ -f requirements.txt ]; then pip-audit -r requirements.txt -f json -o /workspace/reports/F4/pip-audit.json || rc=$?; elif [ -f requirements/production.txt ]; then pip-audit -r requirements/production.txt -f json -o /workspace/reports/F4/pip-audit.json || rc=$?; elif [ -f requirements/base.txt ]; then pip-audit -r requirements/base.txt -f json -o /workspace/reports/F4/pip-audit.json || rc=$?; elif [ -f poetry.lock ]; then pip-audit --locked . -f json -o /workspace/reports/F4/pip-audit.json || rc=$?; if [ ! -s /workspace/reports/F4/pip-audit.json ]; then printf "{\"note\":\"pip-audit locked mode did not recognize poetry.lock in this image; Poetry SCA is covered by OSV, Trivy, Grype and Syft\",\"dependencies\":[]}\n" > /workspace/reports/F4/pip-audit.json; rc=0; fi; else printf "{\"note\":\"No requirements.txt or supported pip-audit lockfile found\",\"dependencies\":[]}\n" > /workspace/reports/F4/pip-audit.json; fi; [ -s /workspace/reports/F4/pip-audit.json ] || { printf "{\"error\":\"pip-audit failed before writing JSON\"}\n" > /workspace/reports/F4/pip-audit.json; rc=2; }; exit ${rc:-0}'
 
     if [[ "$RUN_TRUFFLEHOG" == "true" ]]; then
         run_toolbox "trufflehog" 'trufflehog filesystem . --json --no-update > /workspace/reports/F4/trufflehog.jsonl'
@@ -798,6 +844,36 @@ write_status "summarize-artifacts" "host" "$summarize_rc" "summarize_artifacts.p
 if [[ "$summarize_rc" != "0" ]]; then
     printf '\n[ERROR] summarize-artifacts failed (exit %s)\n' "$summarize_rc" >&2
 fi
+
+defectdojo_setup_rc="0"
+if [[ "$GENERATE_ONLY" != "true" && "$SKIP_DD_IMPORT" != "true" && -z "$DD_API_TOKEN" ]]; then
+    printf '\n══════════════════════════════════════\n'
+    printf 'Configurando DefectDojo local\n'
+    printf '────────────────────\n'
+    defectdojo_setup_output="$(python3 "${SCRIPT_DIR}/defectdojo_setup.py" "$ROOT_DIR" 2> "${STATUS_DIR}/defectdojo-setup.log")"
+    defectdojo_setup_rc="$?"
+    if [[ "$defectdojo_setup_rc" == "0" ]]; then
+        while IFS='=' read -r key value; do
+            case "$key" in
+                DD_URL) DD_URL="$value" ;;
+                DD_API_TOKEN) DD_API_TOKEN="$value" ;;
+                DD_ADMIN_USER) DD_ADMIN_USER="$value" ;;
+                DD_ADMIN_PASSWORD) DD_ADMIN_PASSWORD="$value" ;;
+            esac
+        done <<< "$defectdojo_setup_output"
+        printf '  DefectDojo: %s\n' "$DD_URL"
+        printf '  Token API: generado automáticamente\n'
+        printf '  Usuario UI: %s\n' "$DD_ADMIN_USER"
+        printf '  Password UI: generado automáticamente\n'
+        write_status "defectdojo-setup" "host" "0" "defectdojo_setup.py token=[REDACTED]"
+    else
+        printf '\n[ERROR] DefectDojo setup failed (exit %s). Ver %s\n' "$defectdojo_setup_rc" "${STATUS_DIR}/defectdojo-setup.log" >&2
+        write_status "defectdojo-setup" "host" "$defectdojo_setup_rc" "defectdojo_setup.py failed"
+    fi
+elif [[ "$GENERATE_ONLY" != "true" && "$SKIP_DD_IMPORT" != "true" ]]; then
+    load_defectdojo_admin_env
+    write_status "defectdojo-setup" "host" "0" "DD_API_TOKEN provided"
+fi
 final_rc="$introspection_rc"
 update_final_rc "$django_rc"
 update_final_rc "$authz_rc"
@@ -808,6 +884,7 @@ update_final_rc "$logging_review_rc"
 update_final_rc "$threat_model_review_rc"
 update_final_rc "$supply_chain_review_rc"
 update_final_rc "$summarize_rc"
+update_final_rc "$defectdojo_setup_rc"
 AUDIT_DAST_AUTHORIZED="$DAST_AUTHORIZED" \
 AUDIT_ACTIVE_DAST_AUTHORIZED="$ACTIVE_DAST_AUTHORIZED" \
 AUDIT_RUN_ZAP="$RUN_ZAP" \
@@ -838,15 +915,13 @@ PY
     coverage_percent="${coverage_info#* }"
     [[ "$coverage_status" == "pass" ]] && coverage_rc="0" || coverage_rc="1"
 fi
-write_status "coverage-gates" "host" "$coverage_rc" "coverage threshold ${COVERAGE_THRESHOLD}; status ${coverage_status}; coverage ${coverage_percent}%"
+write_status "coverage-gates" "host" "$coverage_rc" "automated coverage threshold ${COVERAGE_THRESHOLD}; status ${coverage_status}; coverage ${coverage_percent}%"
 if [[ "$coverage_rc" == "0" ]]; then
-    printf 'Coverage gates: pass (%s%%/%s%%)\n' "$coverage_percent" "$COVERAGE_THRESHOLD"
+    printf 'Coverage gates (automated evidence): pass (%s%%/%s%%)\n' "$coverage_percent" "$COVERAGE_THRESHOLD"
 else
-    printf '\n[ERROR] Coverage gates: %s (%s%%/%s%%)\n' "$coverage_status" "$coverage_percent" "$COVERAGE_THRESHOLD" >&2
+    printf '\n[ERROR] Coverage gates (automated evidence): %s (%s%%/%s%%)\n' "$coverage_status" "$coverage_percent" "$COVERAGE_THRESHOLD" >&2
 fi
 update_final_rc "$coverage_rc"
-
-print_execution_summary
 
 printf '\n══════════════════════════════════════\n'
 printf 'Artefactos\n'
@@ -856,26 +931,51 @@ for d in F1 F2 F3 F4 F5 F6 F7 F8; do
     printf '  %s: %s archivos\n' "$d" "$count"
 done
 
+dd_import_rc="0"
+DD_IMPORT_OK="false"
+DD_PRODUCT_URL=""
+DD_FINDINGS_URL=""
+DD_ENGAGEMENT_URL=""
 if [[ "$SKIP_DD_IMPORT" != "true" && -n "$DD_API_TOKEN" ]]; then
     printf '\n══════════════════════════════════════\n'
     printf 'Importando a DefectDojo (%s)\n' "$DD_URL"
     printf '────────────────────\n'
-    if REPORTS_DIR="$REPORTS_DIR" \
+    import_log="${STATUS_DIR}/defectdojo-import.log"
+    REPORTS_DIR="$REPORTS_DIR" \
         DD_URL="$DD_URL" \
         DD_API_TOKEN="$DD_API_TOKEN" \
         DD_PRODUCT_NAME="$PRODUCT" \
-        python3 "${SCRIPT_DIR}/import_defectdojo.py"; then
+        DD_ENGAGEMENT_NAME="$DD_ENGAGEMENT_NAME" \
+        python3 "${SCRIPT_DIR}/import_defectdojo.py" > "$import_log" 2>&1
+    import_rc="$?"
+    cat "$import_log"
+    while IFS= read -r import_line; do
+        case "$import_line" in
+            "DefectDojo product: "*) DD_PRODUCT_URL="${import_line#DefectDojo product: }" ;;
+            "DefectDojo findings: "*) DD_FINDINGS_URL="${import_line#DefectDojo findings: }" ;;
+            "DefectDojo engagement: "*) DD_ENGAGEMENT_URL="${import_line#DefectDojo engagement: }" ;;
+        esac
+    done < "$import_log"
+    if [[ "$import_rc" == "0" ]]; then
         DD_IMPORT_OK="true"
         printf 'DefectDojo import status: completado\n'
+        write_status "defectdojo-import" "host" "0" "import_defectdojo.py token=[REDACTED]"
     else
         DD_IMPORT_OK="false"
+        dd_import_rc="2"
         printf 'DefectDojo import status: error\n'
+        write_status "defectdojo-import" "host" "$dd_import_rc" "import_defectdojo.py token=[REDACTED]"
     fi
 elif [[ "$SKIP_DD_IMPORT" == "true" ]]; then
     printf '\nImportación a DefectDojo omitida por --skip-dd-import.\n'
+    write_status "defectdojo-import" "skipped" "0" "omitido por --skip-dd-import"
 else
     printf '\nDefectDojo: omitido. Configure --dd-token o DD_API_TOKEN para importar automáticamente.\n'
+    write_status "defectdojo-import" "skipped" "0" "omitido; sin DD_API_TOKEN"
 fi
+update_final_rc "$dd_import_rc"
+
+print_execution_summary
 
 if [[ "$SKIP_DD_IMPORT" != "true" && -n "$DD_API_TOKEN" && "${DD_IMPORT_OK:-false}" == "true" ]] && is_true "$OPEN_DD"; then
     printf '\n══════════════════════════════════════\n'
@@ -886,6 +986,21 @@ if [[ "$SKIP_DD_IMPORT" != "true" && -n "$DD_API_TOKEN" && "${DD_IMPORT_OK:-fals
         xdg-open "$DD_URL" 2>/dev/null || true
     fi
 fi
+
+printf '\n══════════════════════════════════════\n'
+printf 'Generando reporte final\n'
+printf '────────────────────\n'
+q_final_report="$(printf '%q' "${SCRIPT_DIR}/final_report.py")"
+q_reports="$(printf '%q' "$REPORTS_DIR")"
+q_output="$(printf '%q' "$OUTPUT_DIR")"
+python3 ${q_final_report} ${q_reports} ${q_output} 2> "${STATUS_DIR}/final-report.log"
+final_report_rc="$?"
+write_status "final-report" "host" "$final_report_rc" "reporte final generado en ${OUTPUT_DIR}/owasp-audit-report.md"
+if [[ "$final_report_rc" != "0" ]]; then
+    printf '  [WARN] Final report generation had issues (see status/final-report.log)\n'
+fi
+printf '  Reporte: %s/owasp-audit-report.md\n' "$OUTPUT_DIR"
+printf '  Reporte: %s/owasp-audit-report.html\n' "$OUTPUT_DIR"
 
 printf '\n══════════════════════════════════════\n'
 printf 'Validaciones no automatizables requeridas\n'
@@ -969,6 +1084,31 @@ A10 — Mishandling of Exceptional Conditions
   □ Verificar manejo de recursos: uploads, conexiones, archivos temporales.
 
 CHECKLIST
+
+printf '\n══════════════════════════════════════\n'
+printf 'Acceso rápido\n'
+printf '────────────────────\n'
+printf '  DefectDojo UI: %s\n' "$DD_URL"
+[[ -n "$DD_PRODUCT_URL" ]] && printf '  DefectDojo producto: %s\n' "$DD_PRODUCT_URL"
+[[ -n "$DD_FINDINGS_URL" ]] && printf '  DefectDojo findings: %s\n' "$DD_FINDINGS_URL"
+[[ -n "$DD_ENGAGEMENT_URL" ]] && printf '  DefectDojo engagement: %s\n' "$DD_ENGAGEMENT_URL"
+if [[ -n "$DD_ADMIN_PASSWORD" ]]; then
+    printf '  Usuario DefectDojo: %s\n' "$DD_ADMIN_USER"
+    printf '  Password DefectDojo: %s\n' "$DD_ADMIN_PASSWORD"
+else
+    printf '  Usuario DefectDojo: %s\n' "$DD_ADMIN_USER"
+    printf '  Password DefectDojo: no disponible; ver logs del initializer o resetear password\n'
+fi
+if [[ "$SKIP_DD_IMPORT" == "true" ]]; then
+    printf '  Importación DefectDojo: omitida\n'
+elif [[ "$DD_IMPORT_OK" == "true" ]]; then
+    printf '  Importación DefectDojo: completada\n'
+else
+    printf '  Importación DefectDojo: error\n'
+fi
+printf '  Reporte Markdown: %s/owasp-audit-report.md\n' "$OUTPUT_DIR"
+printf '  Reporte HTML: %s/owasp-audit-report.html\n' "$OUTPUT_DIR"
+printf '  Artefactos crudos: %s\n' "$REPORTS_DIR"
 
 printf '\nFinalizado.\n'
 printf 'Artefactos crudos: %s\n' "$REPORTS_DIR"

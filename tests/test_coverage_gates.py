@@ -93,7 +93,7 @@ def write_required_baseline(
 
 
 class CoverageGatesTest(unittest.TestCase):
-    def test_category_fails_when_required_manual_evidence_is_missing(self) -> None:
+    def test_category_tracks_missing_required_manual_evidence_without_failing_gate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             reports = Path(tmp)
             write(reports / "F4" / "semgrep.json")
@@ -103,12 +103,13 @@ class CoverageGatesTest(unittest.TestCase):
 
         a01 = result["categories"][0]
         self.assertEqual(a01["id"], "A01")
-        self.assertEqual(a01["status"], "fail")
+        self.assertEqual(a01["status"], "pass")
         self.assertEqual(a01["required_present"], 1)
-        self.assertEqual(a01["required_total"], 3)
-        self.assertEqual(a01["coverage_percent"], 33)
-        self.assertEqual(a01["missing_required"], ["authz", "session_security"])
-        self.assertEqual(result["gates"]["status"], "fail")
+        self.assertEqual(a01["required_total"], 1)
+        self.assertEqual(a01["coverage_percent"], 100)
+        self.assertEqual(a01["missing_required"], [])
+        self.assertEqual(a01["required_manual_missing"], ["authz", "session_security"])
+        self.assertEqual(result["gates"]["status"], "pass")
 
     def test_global_gate_passes_when_required_evidence_meets_threshold(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -120,9 +121,11 @@ class CoverageGatesTest(unittest.TestCase):
         self.assertEqual(category_by_id(result, "A01")["status"], "pass")
         self.assertEqual(category_by_id(result, "A02")["status"], "pass")
         self.assertEqual(category_by_id(result, "A05")["status"], "pass")
-        self.assertEqual(result["summary"]["required_present"], 5)
-        self.assertEqual(result["summary"]["required_total"], 5)
+        self.assertEqual(result["summary"]["required_present"], 2)
+        self.assertEqual(result["summary"]["required_total"], 2)
         self.assertEqual(result["summary"]["coverage_percent"], 100)
+        self.assertEqual(result["summary"]["required_manual_present"], 3)
+        self.assertEqual(result["summary"]["required_manual_total"], 3)
         self.assertEqual(
             result["gates"],
             {
@@ -144,7 +147,8 @@ class CoverageGatesTest(unittest.TestCase):
             result = coverage_gates.evaluate(reports, model(), threshold=30)
 
         self.assertEqual(result["categories"][0]["status"], "pass")
-        self.assertEqual(result["categories"][0]["missing_required"], ["authz", "session_security"])
+        self.assertEqual(result["categories"][0]["missing_required"], [])
+        self.assertEqual(result["categories"][0]["required_manual_missing"], ["authz", "session_security"])
         self.assertEqual(result["gates"]["status"], "pass")
 
     def test_percent_uses_floor_integer_math(self) -> None:
@@ -163,7 +167,7 @@ class CoverageGatesTest(unittest.TestCase):
         self.assertEqual(a01_optional["status"], "optional_missing")
         self.assertEqual(result["gates"]["status"], "pass")
 
-    def test_authz_matrix_result_failure_blocks_a01_gate(self) -> None:
+    def test_authz_matrix_result_failure_is_recorded_without_blocking_coverage_gate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             reports = Path(tmp)
             write_required_baseline(reports, authz_status="fail")
@@ -171,21 +175,22 @@ class CoverageGatesTest(unittest.TestCase):
             result = coverage_gates.evaluate(reports, model(), threshold=100)
 
         a01 = result["categories"][0]
-        self.assertEqual(a01["status"], "fail")
+        self.assertEqual(a01["status"], "pass")
         self.assertEqual(a01["missing_required"], [])
         self.assertEqual(a01["failed_results"], ["authz"])
-        self.assertEqual(result["gates"]["status"], "fail")
+        self.assertEqual(result["gates"]["status"], "pass")
 
-    def test_failed_result_artifact_blocks_gate_even_below_threshold(self) -> None:
+    def test_failed_result_artifact_is_reported_even_when_gate_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             reports = Path(tmp)
             write_required_baseline(reports, authz_status="fail")
 
             result = coverage_gates.evaluate(reports, model(), threshold=0)
 
-        self.assertEqual(result["categories"][0]["status"], "fail")
-        self.assertEqual(result["gates"]["status"], "fail")
-        self.assertEqual(result["gates"]["failed_categories"], ["A01"])
+        self.assertEqual(result["categories"][0]["status"], "pass")
+        self.assertEqual(result["categories"][0]["failed_results"], ["authz"])
+        self.assertEqual(result["gates"]["status"], "pass")
+        self.assertEqual(result["gates"]["failed_categories"], [])
 
     def test_empty_result_artifact_is_missing_not_failed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -200,21 +205,23 @@ class CoverageGatesTest(unittest.TestCase):
             result = coverage_gates.evaluate(reports, model(), threshold=100)
 
         a01 = result["categories"][0]
-        self.assertEqual(a01["missing_required"], ["authz"])
+        self.assertEqual(a01["missing_required"], [])
+        self.assertEqual(a01["required_manual_missing"], ["authz"])
         self.assertEqual(a01["failed_results"], [])
+        self.assertEqual(a01["status"], "pass")
 
-    def test_session_security_result_failure_blocks_a01_gate(self) -> None:
+    def test_session_security_result_failure_is_recorded_without_blocking_gate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             reports = Path(tmp)
             write_required_baseline(reports, session_status="fail")
 
             result = coverage_gates.evaluate(reports, model(), threshold=0)
 
-        self.assertEqual(result["categories"][0]["status"], "fail")
+        self.assertEqual(result["categories"][0]["status"], "pass")
         self.assertEqual(result["categories"][0]["failed_results"], ["session_security"])
-        self.assertEqual(result["gates"]["failed_categories"], ["A01"])
+        self.assertEqual(result["gates"]["failed_categories"], [])
 
-    def test_failed_api_fuzzing_result_blocks_a05_gate(self) -> None:
+    def test_failed_api_fuzzing_result_is_recorded_without_blocking_gate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             reports = Path(tmp)
             write_required_baseline(reports, include_api=True, api_status="fail")
@@ -222,11 +229,11 @@ class CoverageGatesTest(unittest.TestCase):
             result = coverage_gates.evaluate(reports, model(), threshold=0)
 
         a05 = category_by_id(result, "A05")
-        self.assertEqual(a05["status"], "fail")
+        self.assertEqual(a05["status"], "pass")
         self.assertEqual(a05["missing_required"], [])
         self.assertEqual(a05["failed_results"], ["api_fuzzing"])
-        self.assertEqual(result["gates"]["status"], "fail")
-        self.assertIn("A05", result["gates"]["failed_categories"])
+        self.assertEqual(result["gates"]["status"], "pass")
+        self.assertNotIn("A05", result["gates"]["failed_categories"])
 
     def test_empty_api_fuzzing_result_is_missing_not_failed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -236,8 +243,9 @@ class CoverageGatesTest(unittest.TestCase):
             result = coverage_gates.evaluate(reports, model(), threshold=100)
 
         a05 = category_by_id(result, "A05")
-        self.assertEqual(a05["status"], "fail")
-        self.assertEqual(a05["missing_required"], ["api_fuzzing"])
+        self.assertEqual(a05["status"], "pass")
+        self.assertEqual(a05["missing_required"], [])
+        self.assertEqual(a05["required_manual_missing"], ["api_fuzzing"])
         self.assertEqual(a05["failed_results"], [])
 
     def test_missing_api_fuzzing_evidence_counts_as_missing_required_for_a05(self) -> None:
@@ -253,9 +261,10 @@ class CoverageGatesTest(unittest.TestCase):
             result = coverage_gates.evaluate(reports, model(), threshold=100)
 
         a05 = category_by_id(result, "A05")
-        self.assertEqual(a05["status"], "fail")
-        self.assertEqual(a05["missing_required"], ["api_fuzzing"])
-        self.assertEqual(result["gates"]["status"], "fail")
+        self.assertEqual(a05["status"], "pass")
+        self.assertEqual(a05["missing_required"], [])
+        self.assertEqual(a05["required_manual_missing"], ["api_fuzzing"])
+        self.assertEqual(result["gates"]["status"], "pass")
 
     def test_threshold_must_be_between_zero_and_one_hundred(self) -> None:
         with self.assertRaisesRegex(ValueError, "between 0 and 100"):
