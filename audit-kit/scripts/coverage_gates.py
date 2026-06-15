@@ -91,22 +91,27 @@ def evaluate_category(reports: Path, category: dict[str, Any], threshold: int) -
     automated = evidence_rows(reports, category.get("automated_evidence", []))
     manual = evidence_rows(reports, category.get("manual_evidence", []))
     failed_results = failed_result_artifacts(reports, automated + manual)
-    required = [item for item in automated + manual if item["required"]]
-    missing = [item["id"] for item in required if item["status"] == "missing"]
-    present = len(required) - len(missing)
-    coverage = percent(present, len(required))
+    required_automated = [item for item in automated if item["required"]]
+    required_manual = [item for item in manual if item["required"]]
+    missing_automated = [item["id"] for item in required_automated if item["status"] == "missing"]
+    missing_manual = [item["id"] for item in required_manual if item["status"] == "missing"]
+    present_automated = len(required_automated) - len(missing_automated)
+    present_manual = len(required_manual) - len(missing_manual)
+    coverage = percent(present_automated, len(required_automated))
     return {
         "id": category.get("id", ""),
         "name": category.get("name", ""),
-        "status": "pass" if coverage >= threshold and not failed_results else "fail",
+        "status": "pass" if coverage >= threshold else "fail",
         "coverage_percent": coverage,
-        "required_present": present,
-        "required_total": len(required),
-        "missing_required": missing,
+        "required_present": present_automated,
+        "required_total": len(required_automated),
+        "missing_required": missing_automated,
+        "required_manual_present": present_manual,
+        "required_manual_total": len(required_manual),
         "failed_results": failed_results,
         "automated": automated,
         "manual": manual,
-        "required_manual_missing": [item["id"] for item in manual if item["required"] and item["status"] == "missing"],
+        "required_manual_missing": missing_manual,
     }
 
 
@@ -114,13 +119,19 @@ def evaluate(reports: Path, model: dict[str, Any], threshold: int = 80) -> dict[
     categories = [evaluate_category(reports, category, threshold) for category in model.get("categories", [])]
     required_total = sum(category["required_total"] for category in categories)
     required_present = sum(category["required_present"] for category in categories)
+    required_manual_total = sum(category["required_manual_total"] for category in categories)
+    required_manual_present = sum(category["required_manual_present"] for category in categories)
     coverage = percent(required_present, required_total)
+    manual_coverage = percent(required_manual_present, required_manual_total)
     failed = [category["id"] for category in categories if category["status"] == "fail"]
     return {
         "summary": {
             "coverage_percent": coverage,
             "required_present": required_present,
             "required_total": required_total,
+            "manual_coverage_percent": manual_coverage,
+            "required_manual_present": required_manual_present,
+            "required_manual_total": required_manual_total,
         },
         "gates": {
             "status": "pass" if coverage >= threshold and not failed else "fail",

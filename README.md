@@ -5,42 +5,19 @@ Workspace para auditorias OWASP Top 10:2025 sobre proyectos Django. Utilizando D
 
 ## Ejecucion Rapida
 
-Estos pasos permiten ejecutar el toolkit contra un proyecto Django local e importar los resultados a DefectDojo local.
+El runner configura DefectDojo local automaticamente si no recibe `DD_API_TOKEN`: crea `defectdojo/.env`, levanta `docker compose`, espera `uwsgi`, genera token API del usuario `admin` y usa ese token sin imprimirlo.
 
-### 1. Preparar DefectDojo local
-
-Crear `defectdojo/.env` con permisos privados y valores generados localmente:
+Ejecucion minima:
 
 ```bash
-cd defectdojo
-umask 077
-DD_DATABASE_PASSWORD="$(openssl rand -hex 24)"
-{
-  printf 'DD_DATABASE_PASSWORD=%s\n' "$DD_DATABASE_PASSWORD"
-  printf 'DD_DATABASE_URL=postgresql://defectdojo:%s@postgres:5432/defectdojo\n' "$DD_DATABASE_PASSWORD"
-  printf 'DD_SECRET_KEY=%s\n' "$(openssl rand -hex 50)"
-  printf 'DD_CREDENTIAL_AES_256_KEY=%s\n' "$(openssl rand -hex 32)"
-  printf 'DD_ALLOWED_HOSTS=localhost,127.0.0.1\n'
-} > .env
-docker compose up -d
-cd ..
+bash audit-kit/scripts/run_owasp_audit.sh \
+  --project /ruta/a/tu/proyecto \
+  --product "NombreProducto"
 ```
 
-DefectDojo queda disponible en `http://localhost:8080` y `https://localhost:8443`.
+Al finalizar muestra la URL del producto, findings y engagement en DefectDojo, ademas del reporte final Markdown/HTML.
 
-### 2. Obtener token API de DefectDojo
-
-```bash
-DD_API_TOKEN="$(
-  cd defectdojo &&
-  docker compose exec -T uwsgi python manage.py shell -c \
-    "from django.contrib.auth import get_user_model; from rest_framework.authtoken.models import Token; u=get_user_model().objects.get(username='admin'); t,_=Token.objects.get_or_create(user=u); print(t.key)"
-)"
-```
-
-Usar solo `DD_API_TOKEN`.
-
-### 3. Crear archivo privado del proyecto Django
+### Opcional: archivo privado del proyecto Django
 
 Crear un archivo fuera del repositorio, por ejemplo `/ruta/privada/audit.env`:
 
@@ -59,7 +36,7 @@ printf 'DD_API_TOKEN=%s\n' "$DD_API_TOKEN" >> /ruta/privada/audit.env
 
 Si el proyecto usa virtualenv/Poetry, usar un prefijo sin operadores de shell, por ejemplo `poetry run python` o `.venv/bin/python`. Para activar un entorno virtual, hacerlo antes de ejecutar el runner.
 
-### 4. Ejecutar toolkit e importar a DefectDojo
+### Ejecutar toolkit con configuracion privada
 
 ```bash
 set -a
@@ -70,11 +47,10 @@ set +a
   --project "$AUDIT_PROJECT" \
   --product "$AUDIT_PRODUCT_NAME" \
   --settings "$AUDIT_DJANGO_SETTINGS_MODULE" \
-  --django-command-prefix "$AUDIT_DJANGO_COMMAND_PREFIX" \
-  --dd-token "$DD_API_TOKEN"
+  --django-command-prefix "$AUDIT_DJANGO_COMMAND_PREFIX"
 ```
 
-El runner compila la imagen Docker si no existe, conserva artefactos crudos fuera de git en `audit-kit/runs/`, muestra progreso numerado, genera resumen técnico e importa parsers compatibles a DefectDojo.
+El runner compila la imagen Docker si no existe, conserva artefactos crudos fuera de git en `audit-kit/runs/`, muestra progreso numerado, genera resumen técnico, genera reporte final e importa parsers compatibles a DefectDojo.
 
 ### 5. Verificar resultados
 
@@ -277,7 +253,7 @@ Este flujo normaliza evidencia (`F6/api-fuzzing*.json`) desde la revisión priva
 7. Muestra progreso numerado y resumen tecnico por herramienta.
 8. Conserva artefactos crudos en `$OUTPUT_DIR/reports/`.
 9. Escribe `$OUTPUT_DIR/reports/summary.json` con conteos saneados.
-10. Escribe `$OUTPUT_DIR/reports/coverage.json` y `$OUTPUT_DIR/reports/gates.json` con cobertura requerida y gates OWASP.
+10. Escribe `$OUTPUT_DIR/reports/coverage.json` y `$OUTPUT_DIR/reports/gates.json` con cobertura automatizada (gate) y pendientes manuales OWASP.
 11. Escribe `$OUTPUT_DIR/reports/evidence-manifest.json` con artefactos, autorizaciones, cobertura y gates.
 12. Imprime resumen de ejecucion con el estado de `coverage-gates`.
 13. Importa a DefectDojo si existe `--dd-token` o `DD_API_TOKEN`.
@@ -406,6 +382,8 @@ Porcentaje estimado de cobertura automatica por categoria, basado en las herrami
 | A10 | Mishandling of Exceptional Conditions | 40% | Django deploy checks, Bandit, ZAP, Ruff | Fail closed, race conditions, corrupcion de estado, limites de recursos |
 
 Estimado: **55% automatico y 45% validacion especifica del proyecto**. En la practica, el toolkit automatiza la mayor parte de la evidencia tecnica repetible; lo restante corresponde a controles que no son confiables sin contexto de negocio, credenciales, entorno y autorizacion.
+
+El `coverage-gates` del runner aplica el umbral (`--coverage-threshold`) sobre evidencia automatizada. La evidencia manual requerida se reporta como pendiente en `coverage.json` y en el checklist final para cierre de auditoria.
 
 ## Limitaciones
 

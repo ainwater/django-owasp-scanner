@@ -57,6 +57,9 @@ def generate_markdown(metadata: dict[str, Any], gates: dict[str, Any], coverage:
     coverage_pct = gates.get("coverage_percent", "N/A")
     threshold = gates.get("threshold", "N/A")
     gate_status = gates.get("status", "unknown")
+    manual_required_total = summary.get("required_manual_total", 0)
+    manual_required_present = summary.get("required_manual_present", 0)
+    manual_coverage_pct = summary.get("manual_coverage_percent", 0)
     auth = manifest.get("authorization", {})
     dast = "yes" if auth.get("dast") else "no"
     zap = "yes" if auth.get("zap") else "no"
@@ -75,13 +78,14 @@ def generate_markdown(metadata: dict[str, Any], gates: dict[str, Any], coverage:
     lines.append("")
     lines.append(f"| Metric | Value |")
     lines.append(f"|--------|-------|")
-    lines.append(f"| Coverage | {coverage_pct}% (threshold: {threshold}%) |")
+    lines.append(f"| Automated Coverage | {coverage_pct}% (threshold: {threshold}%) |")
+    lines.append(f"| Manual Coverage | {manual_required_present}/{manual_required_total} ({manual_coverage_pct}%) |")
     lines.append(f"| Gates | {gate_status} |")
     lines.append(f"| DAST Authorized | {dast} |")
     lines.append(f"| ZAP | {zap} |")
     lines.append(f"| Active DAST | {active} |")
     lines.append("")
-    lines.append(f"OWASP Top 10:2025 coverage gates: **{gate_status.upper()}** at {coverage_pct}% coverage (minimum {threshold}%).")
+    lines.append(f"OWASP Top 10:2025 coverage gates: **{gate_status.upper()}** at {coverage_pct}% automated coverage (minimum {threshold}%).")
     if gate_status == "fail":
         failed_categories = gates.get("failed_categories", [])
         lines.append(f"Failed categories: {', '.join(failed_categories)}" if failed_categories else "No failed categories.")

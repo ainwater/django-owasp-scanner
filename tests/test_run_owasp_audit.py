@@ -34,7 +34,7 @@ class RunOwaspAuditTest(unittest.TestCase):
             )
 
         self.assertEqual(result.returncode, 1)
-        self.assertIn("Coverage gates: fail", result.stderr)
+        self.assertIn("Coverage gates (automated evidence): fail", result.stderr)
 
     def test_generate_only_returns_nonzero_when_manifest_generation_fails_after_gate_passes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
