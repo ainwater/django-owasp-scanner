@@ -22,7 +22,7 @@ RUN set -eux; ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'); \
     curl -fsSL "https://github.com/google/osv-scanner/releases/download/v2.3.8/osv-scanner_linux_${ARCH}" \
     -o /usr/local/bin/osv-scanner && chmod +x /usr/local/bin/osv-scanner && osv-scanner --version
 
-RUN set -eux; ARCH=$(uname -m | sed 's/x86_64/amd64/;s/aarch64/arm64/'); \
+RUN set -eux; ARCH=$(uname -m | sed 's/x86_64/x64/;s/aarch64/arm64/'); \
     curl -fsSL "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_${ARCH}.tar.gz" \
     -o /tmp/gl.tar.gz && tar xzf /tmp/gl.tar.gz -C /usr/local/bin gitleaks && rm /tmp/gl.tar.gz && gitleaks version
 
